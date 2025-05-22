@@ -23,32 +23,39 @@ export function StudentAttendanceCard({ student, onMarkPresent, onMarkAbsent, cu
   const cardRef = useRef<HTMLDivElement>(null);
 
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (cardRef.current) {
+      // Remove any existing transition to ensure direct manipulation during swipe
+      cardRef.current.style.transition = 'none';
+    }
     setTouchStartX(e.touches[0].clientX);
+    // currentX is the delta, it will be calculated in handleTouchMove
     setIsSwiping(true);
   };
 
   const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (touchStartX === null || !isSwiping) return;
+    if (touchStartX === null || !isSwiping || !cardRef.current) return;
+    
     const deltaX = e.touches[0].clientX - touchStartX;
-    setCurrentX(deltaX);
+    setCurrentX(deltaX); // Store current delta
 
-    if (cardRef.current) {
-      cardRef.current.style.transform = `translateX(${deltaX}px) rotate(${deltaX / 20}deg)`;
-      if (deltaX > SWIPE_THRESHOLD / 2) {
-        cardRef.current.style.borderColor = 'hsl(var(--accent))';
-      } else if (deltaX < -SWIPE_THRESHOLD / 2) {
-        cardRef.current.style.borderColor = 'hsl(var(--destructive))';
-      } else {
-        cardRef.current.style.borderColor = 'hsl(var(--border))';
-      }
+    // Direct manipulation of transform for smoothness
+    cardRef.current.style.transform = `translateX(${deltaX}px) rotate(${deltaX / 20}deg)`;
+    
+    if (deltaX > SWIPE_THRESHOLD / 2) {
+      cardRef.current.style.borderColor = 'hsl(var(--accent))';
+    } else if (deltaX < -SWIPE_THRESHOLD / 2) {
+      cardRef.current.style.borderColor = 'hsl(var(--destructive))';
+    } else {
+      cardRef.current.style.borderColor = 'hsl(var(--border))';
     }
   };
 
   const handleTouchEnd = () => {
     if (touchStartX === null || !isSwiping) return;
-    setIsSwiping(false);
 
-    if (Math.abs(currentX) > SWIPE_THRESHOLD) {
+    const swipedFarEnough = Math.abs(currentX) > SWIPE_THRESHOLD;
+
+    if (swipedFarEnough) {
       if (currentX > SWIPE_THRESHOLD) {
         onMarkPresent();
       } else if (currentX < -SWIPE_THRESHOLD) {
@@ -56,17 +63,20 @@ export function StudentAttendanceCard({ student, onMarkPresent, onMarkAbsent, cu
       }
     }
     
-    setCurrentX(0); // Reset position
-    setTouchStartX(null);
+    setIsSwiping(false); // Update swiping state
+
+    // Reset card style for snap-back or if it's a new card after action
     if (cardRef.current) {
+      // Apply transition for smooth snap-back using 'ease-out'
+      cardRef.current.style.transition = 'transform 0.3s ease-out, border-color 0.3s ease-out';
       cardRef.current.style.transform = 'translateX(0px) rotate(0deg)';
       cardRef.current.style.borderColor = 'hsl(var(--border))';
-      // Add a transition for the card to snap back smoothly
-      cardRef.current.style.transition = 'transform 0.3s ease, border-color 0.3s ease';
-      setTimeout(() => {
-        if(cardRef.current) cardRef.current.style.transition = '';
-      }, 300);
+      // The transition will be set to 'none' by the next handleTouchStart
     }
+
+    // Reset states for the next interaction
+    setTouchStartX(null);
+    setCurrentX(0);
   };
 
   return (
@@ -79,8 +89,8 @@ export function StudentAttendanceCard({ student, onMarkPresent, onMarkAbsent, cu
       style={{ 
         borderWidth: '2px', 
         borderColor: 'hsl(var(--border))',
-        // Initial transition for other properties, not transform during swipe
-        transition: currentStatus !== 'pending' ? 'border-color 0.3s ease' : ''
+        // Initial transition for border-color if status changes, transform is handled dynamically
+        transition: currentStatus !== 'pending' ? 'border-color 0.3s ease-out' : '',
       }}
     >
       <CardHeader className="items-center text-center pointer-events-none">
@@ -117,7 +127,7 @@ export function StudentAttendanceCard({ student, onMarkPresent, onMarkAbsent, cu
             <p className="text-muted-foreground italic">Swipe left for absent, right for present</p>
         )}
       </CardContent>
-      {/* CardFooter removed as buttons are no longer needed */}
     </Card>
   );
 }
+
