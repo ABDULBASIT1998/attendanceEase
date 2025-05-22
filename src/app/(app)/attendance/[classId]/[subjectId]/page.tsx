@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
@@ -26,7 +27,8 @@ export default function AttendancePage() {
 
   useEffect(() => {
     const classData = getClassById(classId);
-    const subjectData = getSubjectById(classId, subjectId);
+    // Subjects are now global, so fetch by subjectId directly
+    const subjectData = getSubjectById(subjectId); 
     const studentData = getStudentsByClass(classId);
 
     if (classData && subjectData && studentData.length > 0) {
@@ -35,12 +37,10 @@ export default function AttendancePage() {
       setStudents(studentData);
       setAttendanceRecords(studentData.map(s => ({ studentId: s.id, status: 'pending' })));
     } else {
-      // Handle case where class/subject/students are not found
       toast({ title: "Error", description: "Class, subject, or student data not found.", variant: "destructive" });
       router.push('/dashboard');
     }
     
-    // Set current date
     const today = new Date();
     setCurrentDate(today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }));
   }, [classId, subjectId, router, toast]);
@@ -59,7 +59,6 @@ export default function AttendancePage() {
     if (currentIndex < students.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
-      // Last student marked
       toast({ title: "All students marked!", description: "You can now review and finalize." });
     }
   };
@@ -77,9 +76,7 @@ export default function AttendancePage() {
   };
 
   const handleFinalize = () => {
-    // Store attendance data in localStorage for the summary page (simple solution for scaffold)
-    // A real app would save this to a database.
-    localStorage.setItem(`attendance-${classId}-${subjectId}`, JSON.stringify(attendanceRecords));
+    localStorage.setItem(`attendance-${classId}-${subjectId}-${new Date().toISOString().split('T')[0]}`, JSON.stringify(attendanceRecords));
     router.push(`/attendance/${classId}/${subjectId}/summary`);
   };
 
@@ -124,7 +121,7 @@ export default function AttendancePage() {
         <Button variant="outline" onClick={handlePrevious} disabled={currentIndex === 0}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Previous
         </Button>
-        <Button onClick={handleNext} disabled={currentIndex === students.length - 1}>
+        <Button onClick={handleNext} disabled={currentIndex === students.length - 1 || markedStudentsCount <= currentIndex}>
           Next <ArrowRight className="ml-2 h-4 w-4" />
         </Button>
       </div>

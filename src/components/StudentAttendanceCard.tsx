@@ -2,10 +2,12 @@
 "use client";
 
 import Image from 'next/image';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import type { Student, AttendanceStatus } from '@/types';
-import { User, CheckCircle, XCircle } from 'lucide-react';
-import { useState, useRef } from 'react';
+import { User, CheckCircle, XCircle, Hand, MousePointerClick } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { useIsMobile } from '@/hooks/use-mobile'; // Ensure this hook is available
 
 interface StudentAttendanceCardProps {
   student: Student;
@@ -21,24 +23,32 @@ export function StudentAttendanceCard({ student, onMarkPresent, onMarkAbsent, cu
   const [currentX, setCurrentX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
+
+  useEffect(() => {
+    // Reset card style if student changes (e.g., after marking one and moving to next)
+    // or if currentStatus changes (though this is less likely to trigger a visual reset here)
+    if (cardRef.current) {
+      cardRef.current.style.transition = 'transform 0.3s ease-out, border-color 0.3s ease-out';
+      cardRef.current.style.transform = 'translateX(0px) rotate(0deg)';
+      cardRef.current.style.borderColor = 'hsl(var(--border))';
+    }
+  }, [student, currentStatus]);
+
 
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (cardRef.current) {
-      // Remove any existing transition to ensure direct manipulation during swipe
-      cardRef.current.style.transition = 'none';
-    }
+    if (!isMobile || !cardRef.current) return;
+    cardRef.current.style.transition = 'none';
     setTouchStartX(e.touches[0].clientX);
-    // currentX is the delta, it will be calculated in handleTouchMove
     setIsSwiping(true);
   };
 
   const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (touchStartX === null || !isSwiping || !cardRef.current) return;
+    if (!isMobile || touchStartX === null || !isSwiping || !cardRef.current) return;
     
     const deltaX = e.touches[0].clientX - touchStartX;
-    setCurrentX(deltaX); // Store current delta
+    setCurrentX(deltaX); 
 
-    // Direct manipulation of transform for smoothness
     cardRef.current.style.transform = `translateX(${deltaX}px) rotate(${deltaX / 20}deg)`;
     
     if (deltaX > SWIPE_THRESHOLD / 2) {
@@ -51,7 +61,7 @@ export function StudentAttendanceCard({ student, onMarkPresent, onMarkAbsent, cu
   };
 
   const handleTouchEnd = () => {
-    if (touchStartX === null || !isSwiping) return;
+    if (!isMobile || touchStartX === null || !isSwiping) return;
 
     const swipedFarEnough = Math.abs(currentX) > SWIPE_THRESHOLD;
 
@@ -63,18 +73,14 @@ export function StudentAttendanceCard({ student, onMarkPresent, onMarkAbsent, cu
       }
     }
     
-    setIsSwiping(false); // Update swiping state
+    setIsSwiping(false); 
 
-    // Reset card style for snap-back or if it's a new card after action
     if (cardRef.current) {
-      // Apply transition for smooth snap-back using 'ease-out'
       cardRef.current.style.transition = 'transform 0.3s ease-out, border-color 0.3s ease-out';
       cardRef.current.style.transform = 'translateX(0px) rotate(0deg)';
       cardRef.current.style.borderColor = 'hsl(var(--border))';
-      // The transition will be set to 'none' by the next handleTouchStart
     }
 
-    // Reset states for the next interaction
     setTouchStartX(null);
     setCurrentX(0);
   };
@@ -82,15 +88,15 @@ export function StudentAttendanceCard({ student, onMarkPresent, onMarkAbsent, cu
   return (
     <Card 
       ref={cardRef}
-      className="w-full max-w-md shadow-xl cursor-grab select-none touch-pan-y"
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
+      className="w-full max-w-md shadow-xl select-none touch-pan-y"
+      onTouchStart={isMobile ? handleTouchStart : undefined}
+      onTouchMove={isMobile ? handleTouchMove : undefined}
+      onTouchEnd={isMobile ? handleTouchEnd : undefined}
       style={{ 
         borderWidth: '2px', 
         borderColor: 'hsl(var(--border))',
-        // Initial transition for border-color if status changes, transform is handled dynamically
-        transition: currentStatus !== 'pending' ? 'border-color 0.3s ease-out' : '',
+        cursor: isMobile ? 'grab' : 'default',
+        transition: currentStatus !== 'pending' && !isSwiping ? 'border-color 0.3s ease-out' : (isSwiping ? 'none' : 'transform 0.3s ease-out, border-color 0.3s ease-out'),
       }}
     >
       <CardHeader className="items-center text-center pointer-events-none">
@@ -112,7 +118,7 @@ export function StudentAttendanceCard({ student, onMarkPresent, onMarkAbsent, cu
         <p className="text-muted-foreground">Roll No: {student.rollNumber}</p>
       </CardHeader>
       <CardContent className="text-center min-h-[60px] pointer-events-none">
-        {isSwiping && Math.abs(currentX) > SWIPE_THRESHOLD / 2 && (
+        {isMobile && isSwiping && Math.abs(currentX) > SWIPE_THRESHOLD / 2 && (
           <p className={`font-semibold text-lg p-2 rounded-md ${currentX > 0 ? 'text-accent-foreground bg-accent' : 'text-destructive-foreground bg-destructive'}`}>
             {currentX > 0 ? 'Present?' : 'Absent?'}
           </p>
@@ -123,11 +129,27 @@ export function StudentAttendanceCard({ student, onMarkPresent, onMarkAbsent, cu
             Marked as: {currentStatus.toUpperCase()}
           </p>
         )}
-        {!isSwiping && currentStatus === 'pending' && (
-            <p className="text-muted-foreground italic">Swipe left for absent, right for present</p>
+        {isMobile && !isSwiping && currentStatus === 'pending' && (
+            <p className="text-muted-foreground italic flex items-center justify-center">
+              <Hand className="mr-2 h-4 w-4" /> Swipe left for absent, right for present
+            </p>
+        )}
+        {!isMobile && currentStatus === 'pending' && (
+           <p className="text-muted-foreground italic flex items-center justify-center">
+             <MousePointerClick className="mr-2 h-4 w-4" /> Use buttons below to mark attendance
+           </p>
         )}
       </CardContent>
+      {!isMobile && (
+        <CardFooter className="flex justify-around pb-6">
+          <Button variant="destructive" onClick={onMarkAbsent} className="w-2/5 text-base py-3">
+            <XCircle className="mr-2 h-5 w-5" /> Absent
+          </Button>
+          <Button variant="default" onClick={onMarkPresent} className="w-2/5 text-base py-3 bg-accent hover:bg-accent/90 text-accent-foreground">
+            <CheckCircle className="mr-2 h-5 w-5" /> Present
+          </Button>
+        </CardFooter>
+      )}
     </Card>
   );
 }
-

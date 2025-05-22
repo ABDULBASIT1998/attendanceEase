@@ -17,6 +17,14 @@
 /.next/
 /out/
 
+/docs
+
+/.idx
+
+/.vscode
+
+/.modified
+
 # production
 /build
 

@@ -1,5 +1,6 @@
+
 import Link from 'next/link';
-import { BookMarked, LogOut, UserCircle } from 'lucide-react';
+import { BookMarked, LogOut, UserCircle, Settings } from 'lucide-react'; // Added Settings
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -32,13 +33,21 @@ export function AppHeader() {
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>My Account</DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/admin">
+                  <Settings className="mr-2 h-4 w-4" />
+                  Admin Panel
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem>Profile</DropdownMenuItem>
               <DropdownMenuItem>Settings</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <LogOut className="mr-2 h-4 w-4" />
-                {/* In a real app, this would trigger Clerk's signOut */}
-                <Link href="/login">Logout</Link>
+              <DropdownMenuItem asChild>
+                {/* In a real app, this would trigger proper signOut */}
+                <Link href="/login">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Logout
+                </Link>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

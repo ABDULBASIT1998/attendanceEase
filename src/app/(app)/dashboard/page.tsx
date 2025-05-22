@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -7,29 +8,36 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import type { ClassItem, Subject } from '@/types';
-import { mockClasses } from '@/lib/mock-data';
-import { ArrowRight, BookOpen, BookUser } from 'lucide-react';
+import { getAllClasses, getSubjectsForClass, getClassById } from '@/lib/mock-data';
+import { ArrowRight, BookOpen, BookUser, FileTextIcon } from 'lucide-react'; // Added FileTextIcon
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [selectedClass, setSelectedClass] = useState<ClassItem | null>(null);
-  const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [availableSubjects, setAvailableSubjects] = useState<Subject[]>([]);
 
   useEffect(() => {
-    if (selectedClass) {
-      setAvailableSubjects(selectedClass.subjects);
-      setSelectedSubject(null); // Reset subject when class changes
+    setClasses(getAllClasses());
+  }, []);
+
+  useEffect(() => {
+    if (selectedClassId) {
+      setAvailableSubjects(getSubjectsForClass(selectedClassId));
+      setSelectedSubjectId(null); // Reset subject when class changes
     } else {
       setAvailableSubjects([]);
     }
-  }, [selectedClass]);
+  }, [selectedClassId]);
 
   const handleStartAttendance = () => {
-    if (selectedClass && selectedSubject) {
-      router.push(`/attendance/${selectedClass.id}/${selectedSubject.id}`);
+    if (selectedClassId && selectedSubjectId) {
+      router.push(`/attendance/${selectedClassId}/${selectedSubjectId}`);
     }
   };
+  
+  const selectedClass = selectedClassId ? getClassById(selectedClassId) : null;
 
   return (
     <div className="container mx-auto py-8 px-4">
@@ -49,15 +57,15 @@ export default function DashboardPage() {
             </Label>
             <Select
               onValueChange={(value) => {
-                const classItem = mockClasses.find(c => c.id === value);
-                setSelectedClass(classItem || null);
+                setSelectedClassId(value);
               }}
+              value={selectedClassId || ""}
             >
               <SelectTrigger id="class-select" className="w-full text-base py-6">
                 <SelectValue placeholder="Choose a class..." />
               </SelectTrigger>
               <SelectContent>
-                {mockClasses.map((classItem) => (
+                {classes.map((classItem) => (
                   <SelectItem key={classItem.id} value={classItem.id} className="text-base py-2">
                     {classItem.name}
                   </SelectItem>
@@ -69,15 +77,14 @@ export default function DashboardPage() {
           {selectedClass && (
             <div className="space-y-2">
               <Label htmlFor="subject-select" className="flex items-center text-lg">
-                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2 lucide lucide-file-text"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+                 <FileTextIcon className="mr-2 h-5 w-5 text-muted-foreground" /> {/* Updated Icon */}
                 Select Subject
               </Label>
               <Select
                 onValueChange={(value) => {
-                  const subjectItem = availableSubjects.find(s => s.id === value);
-                  setSelectedSubject(subjectItem || null);
+                  setSelectedSubjectId(value);
                 }}
-                value={selectedSubject?.id || ""}
+                value={selectedSubjectId || ""}
                 disabled={availableSubjects.length === 0}
               >
                 <SelectTrigger id="subject-select" className="w-full text-base py-6">
@@ -96,7 +103,7 @@ export default function DashboardPage() {
 
           <Button
             onClick={handleStartAttendance}
-            disabled={!selectedClass || !selectedSubject}
+            disabled={!selectedClassId || !selectedSubjectId}
             className="w-full text-lg py-6 mt-4"
           >
             Start Attendance <ArrowRight className="ml-2 h-5 w-5" />
