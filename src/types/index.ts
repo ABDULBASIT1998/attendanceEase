@@ -5,6 +5,7 @@ export interface Student {
   rollNumber: string;
   photoUrl?: string;
   classId: string; // To know which class the student belongs to
+  subjectIds: string[]; // IDs of subjects this student is enrolled in
 }
 
 export interface Subject { // Global subject definition
@@ -15,7 +16,7 @@ export interface Subject { // Global subject definition
 export interface ClassItem {
   id: string;
   name: string;
-  subjectIds: string[]; // IDs referencing global subjects
+  subjectIds: string[]; // IDs referencing global subjects taught in this class
   students: Student[]; // Students are still directly nested
 }
 

@@ -14,13 +14,14 @@ const defaultSubjects: Subject[] = [
   { id: 'subj-cs', name: 'Computer Science' },
 ];
 
-const generateDefaultStudents = (classId: string, classPrefix: string, count: number): Student[] => {
+const generateDefaultStudents = (classId: string, classPrefix: string, count: number, classSubjectIds: string[]): Student[] => {
   return Array.from({ length: count }, (_, i) => ({
     id: `${classId}-student-${i + 1}`,
     name: `${classPrefix} Student ${i + 1}`,
     rollNumber: `${classPrefix.toUpperCase()}${1001 + i}`,
     photoUrl: `https://placehold.co/100x100.png`,
     classId: classId,
+    subjectIds: [...classSubjectIds], // By default, enroll students in all class subjects
   }));
 };
 
@@ -29,25 +30,25 @@ const defaultClasses: ClassItem[] = [
     id: 'class-10a',
     name: 'Class 10A',
     subjectIds: ['subj-math', 'subj-sci', 'subj-eng', 'subj-hist'],
-    students: generateDefaultStudents('class-10a', '10A', 25),
+    students: generateDefaultStudents('class-10a', '10A', 25, ['subj-math', 'subj-sci', 'subj-eng', 'subj-hist']),
   },
   {
     id: 'class-10b',
     name: 'Class 10B',
     subjectIds: ['subj-math', 'subj-sci', 'subj-eng', 'subj-hist'],
-    students: generateDefaultStudents('class-10b', '10B', 22),
+    students: generateDefaultStudents('class-10b', '10B', 22, ['subj-math', 'subj-sci', 'subj-eng', 'subj-hist']),
   },
   {
     id: 'class-11a',
     name: 'Class 11A',
     subjectIds: ['subj-math', 'subj-sci', 'subj-eng', 'subj-phy', 'subj-chem'],
-    students: generateDefaultStudents('class-11a', '11A', 30),
+    students: generateDefaultStudents('class-11a', '11A', 30, ['subj-math', 'subj-sci', 'subj-eng', 'subj-phy', 'subj-chem']),
   },
   {
     id: 'class-11b',
     name: 'Class 11B',
     subjectIds: ['subj-math', 'subj-sci', 'subj-eng', 'subj-bio', 'subj-cs'],
-    students: generateDefaultStudents('class-11b', '11B', 28),
+    students: generateDefaultStudents('class-11b', '11B', 28, ['subj-math', 'subj-sci', 'subj-eng', 'subj-bio', 'subj-cs']),
   },
 ];
 
@@ -61,24 +62,32 @@ const loadAppData = (): AppData => {
     const storedData = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (storedData) {
       try {
-        return JSON.parse(storedData) as AppData;
+        // Basic validation/migration could be added here if structure changes
+        const parsedData = JSON.parse(storedData) as AppData;
+        // Ensure students have subjectIds
+        parsedData.classes.forEach(cls => {
+          cls.students.forEach(s => {
+            if (!s.subjectIds) {
+              s.subjectIds = [...cls.subjectIds]; // Default to all class subjects if missing
+            }
+          });
+        });
+        return parsedData;
       } catch (error) {
         console.error("Error parsing AppData from localStorage", error);
-        // Fallback to default if parsing fails
       }
     }
   }
   return getDefaultAppData();
 };
 
-const saveAppData = (appData: AppData) => {
+const saveAppData = (data: AppData) => {
   if (typeof window !== 'undefined') {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(appData));
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
   }
 };
 
 let appData: AppData = loadAppData();
-// Ensure data is saved initially if loaded from defaults
 if (typeof window !== 'undefined' && !localStorage.getItem(LOCAL_STORAGE_KEY)) {
   saveAppData(appData);
 }
@@ -117,7 +126,7 @@ export const addClass = (name: string, subjectIds: string[]): ClassItem => {
     id: `class-${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
     name,
     subjectIds,
-    students: [],
+    students: [], // New classes start with no students
   };
   appData.classes.push(newClass);
   saveAppData(appData);
@@ -125,32 +134,46 @@ export const addClass = (name: string, subjectIds: string[]): ClassItem => {
 };
 
 // --- Student Management ---
+// Gets ALL students in a class, regardless of their subject enrollment.
 export const getStudentsByClass = (classId: string): Student[] => {
   const classItem = getClassById(classId);
   return classItem ? [...classItem.students] : [];
 };
 
+// Gets students from a specific class who are enrolled in a specific subject.
+export const getStudentsForSubjectInClass = (classId: string, subjectId: string): Student[] => {
+  const classItem = getClassById(classId);
+  if (!classItem) return [];
+  return classItem.students.filter(student => student.subjectIds.includes(subjectId));
+};
+
 export const addStudent = (
   classId: string,
-  studentData: Omit<Student, 'id' | 'classId' | 'photoUrl'> & { photoUrl?: string }
+  studentData: Omit<Student, 'id' | 'classId' | 'photoUrl' | 'subjectIds'> & { photoUrl?: string; studentSubjectIds: string[] }
 ): Student | null => {
   const classItem = getClassById(classId);
   if (!classItem) return null;
 
+  // Validate that studentSubjectIds are part of the class's subjects
+  const classSubjects = classItem.subjectIds;
+  const validStudentSubjects = studentData.studentSubjectIds.filter(id => classSubjects.includes(id));
+
   const newStudent: Student = {
-    ...studentData,
+    name: studentData.name,
+    rollNumber: studentData.rollNumber,
     id: `student-${studentData.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
     classId,
     photoUrl: studentData.photoUrl || `https://placehold.co/100x100.png`,
+    subjectIds: validStudentSubjects,
   };
   classItem.students.push(newStudent);
   saveAppData(appData);
   return newStudent;
 };
 
-// Utility to get subjects for a class
+// Utility to get subjects taught in a class
 export const getSubjectsForClass = (classId: string): Subject[] => {
   const classItem = getClassById(classId);
   if (!classItem) return [];
   return appData.subjects.filter(subject => classItem.subjectIds.includes(subject.id));
-}
+};

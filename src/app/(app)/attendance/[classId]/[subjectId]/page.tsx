@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { StudentAttendanceCard } from '@/components/StudentAttendanceCard';
 import type { Student, AttendanceRecord, ClassItem, Subject, AttendanceStatus } from '@/types';
-import { getClassById, getSubjectById, getStudentsByClass } from '@/lib/mock-data';
+import { getClassById, getSubjectById, getStudentsForSubjectInClass } from '@/lib/mock-data'; // Updated import
 import { ArrowLeft, ArrowRight, CalendarDays, CheckSquare, Library, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -27,17 +27,25 @@ export default function AttendancePage() {
 
   useEffect(() => {
     const classData = getClassById(classId);
-    // Subjects are now global, so fetch by subjectId directly
     const subjectData = getSubjectById(subjectId); 
-    const studentData = getStudentsByClass(classId);
+    // Fetch students enrolled in this specific subject within this class
+    const studentData = getStudentsForSubjectInClass(classId, subjectId);
 
-    if (classData && subjectData && studentData.length > 0) {
+    if (classData && subjectData) {
       setCurrentClass(classData);
       setCurrentSubject(subjectData);
-      setStudents(studentData);
-      setAttendanceRecords(studentData.map(s => ({ studentId: s.id, status: 'pending' })));
+      if (studentData.length > 0) {
+        setStudents(studentData);
+        setAttendanceRecords(studentData.map(s => ({ studentId: s.id, status: 'pending' })));
+      } else {
+        // No students enrolled in this subject for this class
+        setStudents([]);
+        setAttendanceRecords([]);
+        toast({ title: "No Students", description: "No students are enrolled in this subject for the selected class.", variant: "default" });
+        // Consider redirecting or showing a message, for now, it will show an empty state
+      }
     } else {
-      toast({ title: "Error", description: "Class, subject, or student data not found.", variant: "destructive" });
+      toast({ title: "Error", description: "Class or subject data not found.", variant: "destructive" });
       router.push('/dashboard');
     }
     
@@ -58,7 +66,7 @@ export default function AttendancePage() {
 
     if (currentIndex < students.length - 1) {
       setCurrentIndex(currentIndex + 1);
-    } else {
+    } else if (students.length > 0) {
       toast({ title: "All students marked!", description: "You can now review and finalize." });
     }
   };
@@ -76,6 +84,10 @@ export default function AttendancePage() {
   };
 
   const handleFinalize = () => {
+    if (students.length === 0) {
+        toast({title: "No Students", description: "Cannot finalize attendance with no students.", variant: "destructive"});
+        return;
+    }
     localStorage.setItem(`attendance-${classId}-${subjectId}-${new Date().toISOString().split('T')[0]}`, JSON.stringify(attendanceRecords));
     router.push(`/attendance/${classId}/${subjectId}/summary`);
   };
@@ -83,7 +95,7 @@ export default function AttendancePage() {
   const progress = students.length > 0 ? ((currentIndex + 1) / students.length) * 100 : 0;
   const markedStudentsCount = attendanceRecords.filter(r => r.status !== 'pending').length;
 
-  if (!currentClass || !currentSubject || !currentStudent) {
+  if (!currentClass || !currentSubject) { // Removed currentStudent check to handle no students case
     return (
       <div className="container mx-auto py-8 px-4 flex justify-center items-center min-h-[calc(100vh-10rem)]">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -91,7 +103,7 @@ export default function AttendancePage() {
     );
   }
   
-  const currentStudentAttendance = attendanceRecords.find(ar => ar.studentId === currentStudent.id);
+  const currentStudentAttendance = currentStudent ? attendanceRecords.find(ar => ar.studentId === currentStudent.id) : undefined;
 
   return (
     <div className="container mx-auto py-8 px-4 flex flex-col items-center">
@@ -103,37 +115,53 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      <StudentAttendanceCard
-        student={currentStudent}
-        onMarkPresent={() => handleMarkAttendance('present')}
-        onMarkAbsent={() => handleMarkAttendance('absent')}
-        currentStatus={currentStudentAttendance?.status}
-      />
+      {students.length === 0 ? (
+        <Card className="w-full max-w-md text-center p-8 shadow-lg">
+            <CardTitle>No Students</CardTitle>
+            <CardDescription className="mt-2">There are no students enrolled in "{currentSubject.name}" for "{currentClass.name}".</CardDescription>
+            <Button onClick={() => router.push('/dashboard')} className="mt-6">Back to Dashboard</Button>
+        </Card>
+      ) : currentStudent ? (
+        <StudentAttendanceCard
+            student={currentStudent}
+            onMarkPresent={() => handleMarkAttendance('present')}
+            onMarkAbsent={() => handleMarkAttendance('absent')}
+            currentStatus={currentStudentAttendance?.status}
+        />
+      ) : (
+         <div className="container mx-auto py-8 px-4 flex justify-center items-center min-h-[calc(100vh-20rem)]">
+            <p>Loading student...</p>
+        </div>
+      )}
 
-      <div className="w-full max-w-md mt-6">
-        <Progress value={progress} className="w-full h-3 mb-2" />
-        <p className="text-sm text-muted-foreground text-center">
-          Student {currentIndex + 1} of {students.length}
-        </p>
-      </div>
+      {students.length > 0 && (
+        <>
+            <div className="w-full max-w-md mt-6">
+                <Progress value={progress} className="w-full h-3 mb-2" />
+                <p className="text-sm text-muted-foreground text-center">
+                Student {currentIndex + 1} of {students.length}
+                </p>
+            </div>
 
-      <div className="flex justify-between w-full max-w-md mt-6">
-        <Button variant="outline" onClick={handlePrevious} disabled={currentIndex === 0}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> Previous
-        </Button>
-        <Button onClick={handleNext} disabled={currentIndex === students.length - 1 || markedStudentsCount <= currentIndex}>
-          Next <ArrowRight className="ml-2 h-4 w-4" />
-        </Button>
-      </div>
+            <div className="flex justify-between w-full max-w-md mt-6">
+                <Button variant="outline" onClick={handlePrevious} disabled={currentIndex === 0}>
+                <ArrowLeft className="mr-2 h-4 w-4" /> Previous
+                </Button>
+                <Button onClick={handleNext} disabled={currentIndex === students.length - 1 || markedStudentsCount <= currentIndex}>
+                Next <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+            </div>
 
-      {markedStudentsCount === students.length && (
-        <Button 
-          onClick={handleFinalize} 
-          className="mt-8 text-lg py-6 px-8 bg-primary hover:bg-primary/90"
-          size="lg"
-        >
-          <CheckSquare className="mr-2 h-5 w-5" /> Finalize Attendance
-        </Button>
+            {markedStudentsCount === students.length && (
+                <Button 
+                onClick={handleFinalize} 
+                className="mt-8 text-lg py-6 px-8 bg-primary hover:bg-primary/90"
+                size="lg"
+                >
+                <CheckSquare className="mr-2 h-5 w-5" /> Finalize Attendance
+                </Button>
+            )}
+        </>
       )}
     </div>
   );
