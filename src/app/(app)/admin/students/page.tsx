@@ -11,48 +11,57 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import type { ClassItem, Student, Subject } from '@/types';
-import { addStudent, getAllClasses, getStudentsByClass, getSubjectsForClass, getAllSubjects as getAllGlobalSubjects } from '@/lib/mock-data';
-import { UserPlus, Users, ArrowLeft, ListChecks, BookOpen, Upload, Image as ImageIcon } from 'lucide-react';
+import { addStudent, getAllClasses, getStudentsByClass, getSubjectsForClass, getAllSubjects as getAllGlobalSubjects, updateStudent } from '@/lib/mock-data';
+import { UserPlus, Users, ArrowLeft, ListChecks, BookOpen, Upload, Image as ImageIcon, Pencil } from 'lucide-react';
 import Image from 'next/image';
+import { EditStudentModal } from '@/components/admin/EditStudentModal';
 
 export default function ManageStudentsPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [studentName, setStudentName] = useState('');
-  // const [rollNumber, setRollNumber] = useState(''); // Roll number is now auto-generated
   const [selectedPhotoFile, setSelectedPhotoFile] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
-  const [availableClassSubjects, setAvailableClassSubjects] = useState<Subject[]>([]);
-  const [selectedStudentSubjectIds, setSelectedStudentSubjectIds] = useState<string[]>([]);
+  const [selectedClassIdForNewStudent, setSelectedClassIdForNewStudent] = useState<string | null>(null);
+  const [availableClassSubjectsForNewStudent, setAvailableClassSubjectsForNewStudent] = useState<Subject[]>([]);
+  const [selectedStudentSubjectIdsForNewStudent, setSelectedStudentSubjectIdsForNewStudent] = useState<string[]>([]);
   
   const [allClasses, setAllClasses] = useState<ClassItem[]>([]);
   const [studentsInSelectedClass, setStudentsInSelectedClass] = useState<Student[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [allGlobalSubjects, setAllGlobalSubjects] = useState<Subject[]>([]);
 
-  useEffect(() => {
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [studentToEdit, setStudentToEdit] = useState<Student | null>(null);
+  const [classForStudentToEdit, setClassForStudentToEdit] = useState<ClassItem | null>(null);
+
+
+  const fetchAllData = () => {
     setAllClasses(getAllClasses());
     setAllGlobalSubjects(getAllGlobalSubjects());
+  };
+
+  useEffect(() => {
+    fetchAllData();
   }, []);
 
   useEffect(() => {
-    if (selectedClassId) {
-      setStudentsInSelectedClass(getStudentsByClass(selectedClassId));
-      const subjectsForClass = getSubjectsForClass(selectedClassId);
-      setAvailableClassSubjects(subjectsForClass);
-      setSelectedStudentSubjectIds([]); 
+    if (selectedClassIdForNewStudent) {
+      setStudentsInSelectedClass(getStudentsByClass(selectedClassIdForNewStudent));
+      const subjectsForClass = getSubjectsForClass(selectedClassIdForNewStudent);
+      setAvailableClassSubjectsForNewStudent(subjectsForClass);
+      setSelectedStudentSubjectIdsForNewStudent([]); 
     } else {
       setStudentsInSelectedClass([]);
-      setAvailableClassSubjects([]);
-      setSelectedStudentSubjectIds([]);
+      setAvailableClassSubjectsForNewStudent([]);
+      setSelectedStudentSubjectIdsForNewStudent([]);
     }
-  }, [selectedClassId]);
+  }, [selectedClassIdForNewStudent]);
 
-  const handleStudentSubjectToggle = (subjectId: string) => {
-    setSelectedStudentSubjectIds(prev =>
+  const handleStudentSubjectToggleForNewStudent = (subjectId: string) => {
+    setSelectedStudentSubjectIdsForNewStudent(prev =>
       prev.includes(subjectId) ? prev.filter(id => id !== subjectId) : [...prev, subjectId]
     );
   };
@@ -72,43 +81,41 @@ export default function ManageStudentsPage() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmitNewStudent = (e: React.FormEvent) => {
     e.preventDefault();
     if (!studentName.trim()) {
       toast({ title: "Error", description: "Student name is required.", variant: "destructive" });
       return;
     }
-    if (!selectedClassId) {
+    if (!selectedClassIdForNewStudent) {
       toast({ title: "Error", description: "Please select a class for the student.", variant: "destructive" });
       return;
     }
-    if (selectedStudentSubjectIds.length === 0) {
+    if (selectedStudentSubjectIdsForNewStudent.length === 0) {
         toast({ title: "Error", description: "Please select at least one subject for the student.", variant: "destructive" });
         return;
     }
     setIsLoading(true);
     try {
-      // PhotoURL will be a placeholder for now as we are not storing images
-      const placeholderPhotoUrl = `https://placehold.co/100x100.png`;
+      const placeholderPhotoUrl = photoPreviewUrl || `https://placehold.co/100x100.png`;
       
-      addStudent(selectedClassId, { 
+      addStudent(selectedClassIdForNewStudent, { 
         name: studentName, 
-        // rollNumber, // No longer manually entered
-        photoUrl: placeholderPhotoUrl, // Using placeholder
-        studentSubjectIds: selectedStudentSubjectIds 
+        photoUrl: placeholderPhotoUrl, 
+        studentSubjectIds: selectedStudentSubjectIdsForNewStudent 
       });
       toast({ title: "Success", description: `Student "${studentName}" added to class.` });
       setStudentName('');
-      // setRollNumber('');
       setSelectedPhotoFile(null);
       setPhotoPreviewUrl(null);
-      if(fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
-      setSelectedStudentSubjectIds([]);
-      if (selectedClassId) {
-        setStudentsInSelectedClass(getStudentsByClass(selectedClassId)); // Refresh student list
+      if(fileInputRef.current) fileInputRef.current.value = "";
+      setSelectedStudentSubjectIdsForNewStudent([]);
+      // Don't reset selectedClassIdForNewStudent to keep the student list visible
+      if (selectedClassIdForNewStudent) {
+        setStudentsInSelectedClass(getStudentsByClass(selectedClassIdForNewStudent));
       }
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to add student.", variant: "destructive" });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to add student.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -117,6 +124,53 @@ export default function ManageStudentsPage() {
   const getSubjectNameById = (subjectId: string) => {
     return allGlobalSubjects.find(s => s.id === subjectId)?.name || 'Unknown Subject';
   }
+
+  const handleEditStudent = (student: Student) => {
+    const studentClass = allClasses.find(c => c.id === student.classId);
+    if (studentClass) {
+        setStudentToEdit(student);
+        setClassForStudentToEdit(studentClass);
+        setIsEditModalOpen(true);
+    } else {
+        toast({ title: "Error", description: "Could not find class for this student.", variant: "destructive"});
+    }
+  };
+
+  const handleUpdateStudent = (
+    studentId: string, 
+    classId: string,
+    updatedData: Partial<Omit<Student, 'id' | 'classId' | 'rollNumber'>> & { studentSubjectIds?: string[], photoFile?: File | null }
+  ) => {
+    try {
+        // Simulate photo upload if photoFile is present, otherwise use existing/updated photoUrl
+        let photoUrlToUpdate = studentToEdit?.photoUrl; // Keep existing if no new file/url
+        if (updatedData.photoFile) { // New file uploaded
+             photoUrlToUpdate = URL.createObjectURL(updatedData.photoFile); // For preview, in real app upload and get URL
+        } else if (updatedData.photoUrl === null) { // Photo explicitly removed
+            photoUrlToUpdate = `https://placehold.co/100x100.png`;
+        } else if (updatedData.photoUrl) { // Direct URL change (less likely with file input)
+            photoUrlToUpdate = updatedData.photoUrl;
+        }
+
+
+        const dataForUpdate = { ...updatedData, photoUrl: photoUrlToUpdate };
+        delete dataForUpdate.photoFile; // Don't pass File object to mock data fn
+
+        updateStudent(studentId, classId, dataForUpdate);
+        toast({ title: "Success", description: "Student updated successfully." });
+        if (selectedClassIdForNewStudent) { // Refresh student list if a class is selected
+            setStudentsInSelectedClass(getStudentsByClass(selectedClassIdForNewStudent));
+        }
+        setIsEditModalOpen(false);
+        setStudentToEdit(null);
+        setClassForStudentToEdit(null);
+        return true;
+    } catch (error: any) {
+        toast({ title: "Error", description: error.message || "Failed to update student.", variant: "destructive" });
+        return false;
+    }
+  };
+
 
   return (
     <div className="container mx-auto py-8 px-4">
@@ -133,7 +187,7 @@ export default function ManageStudentsPage() {
             <CardDescription>Enter student details, assign to a class, and select their subjects. Roll number is auto-generated.</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmitNewStudent} className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="studentName" className="text-lg">Student Name</Label>
                 <Input
@@ -147,8 +201,6 @@ export default function ManageStudentsPage() {
                 />
               </div>
               
-              {/* Removed Roll Number Input */}
-
               <div className="space-y-2">
                 <Label htmlFor="photo" className="text-lg">Student Photo</Label>
                 <div className="flex items-center space-x-4">
@@ -175,18 +227,18 @@ export default function ManageStudentsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="class-select" className="text-lg flex items-center">
+                <Label htmlFor="class-select-new-student" className="text-lg flex items-center">
                   <Users className="mr-2 h-5 w-5 text-muted-foreground" /> Assign to Class
                 </Label>
                 {allClasses.length === 0 ? (
                      <p className="text-sm text-muted-foreground">No classes available. Please <Button variant="link" onClick={() => router.push('/admin/classes')} className="p-0 h-auto">add classes</Button> first.</p>
                 ) : (
                 <Select
-                  onValueChange={(value) => setSelectedClassId(value)}
-                  value={selectedClassId || ""}
-                  required
+                  onValueChange={(value) => setSelectedClassIdForNewStudent(value)}
+                  value={selectedClassIdForNewStudent || ""}
+                  
                 >
-                  <SelectTrigger id="class-select" className="w-full text-base py-6">
+                  <SelectTrigger id="class-select-new-student" className="w-full text-base py-6">
                     <SelectValue placeholder="Choose a class..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -200,20 +252,20 @@ export default function ManageStudentsPage() {
                 )}
               </div>
 
-              {selectedClassId && availableClassSubjects.length > 0 && (
+              {selectedClassIdForNewStudent && availableClassSubjectsForNewStudent.length > 0 && (
                 <div className="space-y-2">
                   <Label className="text-lg flex items-center">
                     <BookOpen className="mr-2 h-5 w-5 text-muted-foreground" /> Assign Subjects to Student
                   </Label>
                   <div className="max-h-48 overflow-y-auto space-y-2 border p-4 rounded-md">
-                    {availableClassSubjects.map(subject => (
+                    {availableClassSubjectsForNewStudent.map(subject => (
                       <div key={subject.id} className="flex items-center space-x-2">
                         <Checkbox
-                          id={`student-subject-${subject.id}`}
-                          checked={selectedStudentSubjectIds.includes(subject.id)}
-                          onCheckedChange={() => handleStudentSubjectToggle(subject.id)}
+                          id={`student-subject-new-${subject.id}`}
+                          checked={selectedStudentSubjectIdsForNewStudent.includes(subject.id)}
+                          onCheckedChange={() => handleStudentSubjectToggleForNewStudent(subject.id)}
                         />
-                        <Label htmlFor={`student-subject-${subject.id}`} className="font-normal cursor-pointer">
+                        <Label htmlFor={`student-subject-new-${subject.id}`} className="font-normal cursor-pointer">
                           {subject.name}
                         </Label>
                       </div>
@@ -221,11 +273,11 @@ export default function ManageStudentsPage() {
                   </div>
                 </div>
               )}
-              {selectedClassId && availableClassSubjects.length === 0 && (
+              {selectedClassIdForNewStudent && availableClassSubjectsForNewStudent.length === 0 && (
                  <p className="text-sm text-muted-foreground">The selected class has no subjects assigned. Please <Button variant="link" onClick={() => router.push('/admin/classes')} className="p-0 h-auto">assign subjects to the class</Button> first.</p>
               )}
 
-              <Button type="submit" className="w-full text-lg py-3" disabled={isLoading || allClasses.length === 0 || (selectedClassId && availableClassSubjects.length === 0)}>
+              <Button type="submit" className="w-full text-lg py-3" disabled={isLoading || allClasses.length === 0 || (selectedClassIdForNewStudent && availableClassSubjectsForNewStudent.length === 0) || !selectedClassIdForNewStudent}>
                 {isLoading ? 'Adding Student...' : 'Add Student'}
               </Button>
             </form>
@@ -238,11 +290,11 @@ export default function ManageStudentsPage() {
               <ListChecks className="mr-2 h-6 w-6 text-primary" /> Students in Selected Class
             </CardTitle>
             <CardDescription>
-              {selectedClassId ? `Students in ${allClasses.find(c=>c.id === selectedClassId)?.name || 'Selected Class'}` : 'Select a class to view students.'}
+              {selectedClassIdForNewStudent ? `Students in ${allClasses.find(c=>c.id === selectedClassIdForNewStudent)?.name || 'Selected Class'}` : 'Select a class to view students.'}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {!selectedClassId ? (
+            {!selectedClassIdForNewStudent ? (
               <p className="text-muted-foreground">Please select a class from the "Add New Student" form to see the list of students.</p>
             ) : studentsInSelectedClass.length === 0 ? (
               <p className="text-muted-foreground">No students found in this class.</p>
@@ -250,19 +302,24 @@ export default function ManageStudentsPage() {
               <ul className="space-y-3 max-h-[calc(100vh-25rem)] overflow-y-auto">
                 {studentsInSelectedClass.map(student => (
                   <li key={student.id} className="p-3 border rounded-md bg-card">
-                    <div className="flex items-center space-x-3">
-                        <Image
-                        src={student.photoUrl || `https://placehold.co/40x40.png`}
-                        alt={student.name}
-                        width={40}
-                        height={40}
-                        className="rounded-full object-cover border"
-                        data-ai-hint="student avatar"
-                        />
-                        <div>
-                        <p className="font-semibold">{student.name}</p>
-                        <p className="text-xs text-muted-foreground">Roll No: {student.rollNumber}</p>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                            <Image
+                            src={student.photoUrl || `https://placehold.co/40x40.png`}
+                            alt={student.name}
+                            width={40}
+                            height={40}
+                            className="rounded-full object-cover border"
+                            data-ai-hint="student avatar"
+                            />
+                            <div>
+                            <p className="font-semibold">{student.name}</p>
+                            <p className="text-xs text-muted-foreground">Roll No: {student.rollNumber}</p>
+                            </div>
                         </div>
+                        <Button variant="outline" size="sm" onClick={() => handleEditStudent(student)}>
+                            <Pencil className="mr-2 h-4 w-4" /> Edit
+                        </Button>
                     </div>
                     <div className="mt-2">
                         <p className="text-xs font-medium">Enrolled Subjects:</p>
@@ -283,6 +340,20 @@ export default function ManageStudentsPage() {
           </CardContent>
         </Card>
       </div>
+      {isEditModalOpen && studentToEdit && classForStudentToEdit && (
+        <EditStudentModal
+          isOpen={isEditModalOpen}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setStudentToEdit(null);
+            setClassForStudentToEdit(null);
+          }}
+          student={studentToEdit}
+          classItem={classForStudentToEdit}
+          allGlobalSubjects={allGlobalSubjects}
+          onUpdate={handleUpdateStudent}
+        />
+      )}
     </div>
   );
 }

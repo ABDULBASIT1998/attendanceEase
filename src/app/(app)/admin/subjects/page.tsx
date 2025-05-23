@@ -9,8 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import type { Subject } from '@/types';
-import { addSubject, getAllSubjects } from '@/lib/mock-data';
-import { PlusCircle, BookOpen, ArrowLeft, ListChecks } from 'lucide-react';
+import { addSubject, getAllSubjects, updateSubject } from '@/lib/mock-data';
+import { PlusCircle, BookOpen, ArrowLeft, ListChecks, Pencil } from 'lucide-react';
+import { EditSubjectModal } from '@/components/admin/EditSubjectModal';
 
 export default function ManageSubjectsPage() {
   const router = useRouter();
@@ -18,9 +19,15 @@ export default function ManageSubjectsPage() {
   const [subjectName, setSubjectName] = useState('');
   const [existingSubjects, setExistingSubjects] = useState<Subject[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [subjectToEdit, setSubjectToEdit] = useState<Subject | null>(null);
+
+  const fetchSubjects = () => {
+    setExistingSubjects(getAllSubjects());
+  };
 
   useEffect(() => {
-    setExistingSubjects(getAllSubjects());
+    fetchSubjects();
   }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -35,11 +42,30 @@ export default function ManageSubjectsPage() {
       addSubject(trimmedSubjectName);
       toast({ title: "Success", description: `Subject "${trimmedSubjectName}" added successfully.` });
       setSubjectName('');
-      setExistingSubjects(getAllSubjects()); // Refresh the list
+      fetchSubjects(); 
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to add subject. Please try again.", variant: "destructive" });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleEditSubject = (subject: Subject) => {
+    setSubjectToEdit(subject);
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdateSubject = (subjectId: string, newName: string) => {
+    try {
+      updateSubject(subjectId, newName);
+      toast({ title: "Success", description: "Subject updated successfully." });
+      fetchSubjects();
+      setIsEditModalOpen(false);
+      setSubjectToEdit(null);
+      return true;
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to update subject.", variant: "destructive" });
+      return false;
     }
   };
 
@@ -91,9 +117,14 @@ export default function ManageSubjectsPage() {
             ) : (
               <ul className="space-y-2 max-h-[400px] overflow-y-auto">
                 {existingSubjects.map(subject => (
-                  <li key={subject.id} className="p-3 border rounded-md bg-card flex items-center">
-                    <BookOpen className="mr-3 h-5 w-5 text-muted-foreground" />
-                    {subject.name}
+                  <li key={subject.id} className="p-3 border rounded-md bg-card flex items-center justify-between">
+                    <div className="flex items-center">
+                      <BookOpen className="mr-3 h-5 w-5 text-muted-foreground" />
+                      {subject.name}
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => handleEditSubject(subject)}>
+                      <Pencil className="mr-2 h-4 w-4" /> Edit
+                    </Button>
                   </li>
                 ))}
               </ul>
@@ -101,7 +132,17 @@ export default function ManageSubjectsPage() {
           </CardContent>
         </Card>
       </div>
+      {subjectToEdit && (
+        <EditSubjectModal
+          isOpen={isEditModalOpen}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setSubjectToEdit(null);
+          }}
+          subject={subjectToEdit}
+          onUpdate={handleUpdateSubject}
+        />
+      )}
     </div>
   );
 }
-

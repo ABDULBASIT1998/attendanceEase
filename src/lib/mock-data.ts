@@ -14,12 +14,12 @@ const defaultSubjects: Subject[] = [
   { id: 'subj-cs', name: 'Computer Science' },
 ];
 
-const generateRollNumber = (classItem: ClassItem): string => {
+const generateRollNumber = (classItem: ClassItem, existingStudentId?: string): string => {
   const classPrefix = classItem.name.replace(/\s+/g, '').toUpperCase();
-  // Ensure students array exists
-  const studentRollNumbers = (classItem.students || []).map(s => s.rollNumber);
+  const studentRollNumbers = (classItem.students || [])
+    .filter(s => s.id !== existingStudentId) // Exclude current student if updating
+    .map(s => s.rollNumber);
   let nextNumber = 1;
-  // Check against existing roll numbers in the specific class
   while (studentRollNumbers.includes(`${classPrefix}-${String(nextNumber).padStart(3, '0')}`)) {
     nextNumber++;
   }
@@ -28,14 +28,14 @@ const generateRollNumber = (classItem: ClassItem): string => {
 
 const generateDefaultStudents = (classItem: ClassItem, count: number): Student[] => {
   const students: Student[] = [];
-  const tempClassItemForRollNumber = { ...classItem, students: [] as Student[] }; // Simulate empty students for initial generation
+  const tempClassItemForRollNumber = { ...classItem, students: [] as Student[] };
 
   for (let i = 0; i < count; i++) {
     const studentName = `${classItem.name.replace('Class ', '')} Student ${i + 1}`;
     const studentId = `${classItem.id}-student-${i + 1}`;
     const studentSubjectIds = [...classItem.subjectIds]; 
     
-    const rollNumber = generateRollNumber(tempClassItemForRollNumber); // Pass temp item
+    const rollNumber = generateRollNumber(tempClassItemForRollNumber); 
     
     const newStudent: Student = {
       id: studentId,
@@ -46,7 +46,7 @@ const generateDefaultStudents = (classItem: ClassItem, count: number): Student[]
       subjectIds: studentSubjectIds,
     };
     students.push(newStudent);
-    tempClassItemForRollNumber.students.push(newStudent); // Add to temp item for next roll number
+    tempClassItemForRollNumber.students.push(newStudent); 
   }
   return students;
 };
@@ -102,7 +102,6 @@ const loadAppData = (): AppData => {
     if (storedData) {
       try {
         const parsedData = JSON.parse(storedData) as AppData;
-        // Ensure all classes have a students array
         parsedData.classes = parsedData.classes.map(cls => ({
           ...cls,
           students: cls.students || [] 
@@ -113,8 +112,8 @@ const loadAppData = (): AppData => {
             if (!s.subjectIds) {
               s.subjectIds = [...cls.subjectIds];
             }
-            if (!s.rollNumber) { 
-              s.rollNumber = generateRollNumber(cls); 
+            if (!s.rollNumber || s.rollNumber.startsWith("ROLL-")) { // Added check for old roll numbers
+              s.rollNumber = generateRollNumber(cls, s.id); 
             }
           });
         });
@@ -150,18 +149,35 @@ export const getSubjectById = (subjectId: string): Subject | undefined => {
 };
 
 export const addSubject = (name: string): Subject => {
-  const existingSubject = appData.subjects.find(s => s.name.toLowerCase() === name.toLowerCase().trim());
+  const trimmedName = name.trim();
+  const existingSubject = appData.subjects.find(s => s.name.toLowerCase() === trimmedName.toLowerCase());
   if (existingSubject) {
-    throw new Error(`Subject "${name}" already exists.`);
+    throw new Error(`Subject "${trimmedName}" already exists.`);
   }
   const newSubject: Subject = {
-    id: `subj-${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
-    name: name.trim(),
+    id: `subj-${trimmedName.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
+    name: trimmedName,
   };
   appData.subjects.push(newSubject);
   saveAppData(appData);
   return newSubject;
 };
+
+export const updateSubject = (subjectId: string, newName: string): Subject | null => {
+    const trimmedNewName = newName.trim();
+    const subjectIndex = appData.subjects.findIndex(s => s.id === subjectId);
+    if (subjectIndex === -1) {
+        throw new Error("Subject not found.");
+    }
+    const existingSubject = appData.subjects.find(s => s.name.toLowerCase() === trimmedNewName.toLowerCase() && s.id !== subjectId);
+    if (existingSubject) {
+        throw new Error(`Subject name "${trimmedNewName}" already exists.`);
+    }
+    appData.subjects[subjectIndex].name = trimmedNewName;
+    saveAppData(appData);
+    return appData.subjects[subjectIndex];
+};
+
 
 // --- Class Management ---
 export const getAllClasses = (): ClassItem[] => {
@@ -189,6 +205,38 @@ export const addClass = (name: string, subjectIds: string[]): ClassItem => {
   return newClass;
 };
 
+export const updateClass = (classId: string, newName: string, newSubjectIds: string[]): ClassItem | null => {
+    const trimmedNewName = newName.trim();
+    const classIndex = appData.classes.findIndex(c => c.id === classId);
+    if (classIndex === -1) {
+        throw new Error("Class not found.");
+    }
+    const existingClass = appData.classes.find(c => c.name.toLowerCase() === trimmedNewName.toLowerCase() && c.id !== classId);
+    if (existingClass) {
+        throw new Error(`Class name "${trimmedNewName}" already exists.`);
+    }
+
+    const oldClassName = appData.classes[classIndex].name;
+    appData.classes[classIndex].name = trimmedNewName;
+    appData.classes[classIndex].subjectIds = newSubjectIds;
+
+    // If class name changed, update student roll numbers and subject IDs if necessary
+    if (oldClassName !== trimmedNewName) {
+        appData.classes[classIndex].students.forEach(student => {
+            student.rollNumber = generateRollNumber(appData.classes[classIndex], student.id);
+        });
+    }
+    // Ensure students only have subjects that are part of the updated class subjects
+    appData.classes[classIndex].students.forEach(student => {
+        student.subjectIds = student.subjectIds.filter(subId => newSubjectIds.includes(subId));
+    });
+
+
+    saveAppData(appData);
+    return appData.classes[classIndex];
+};
+
+
 // --- Student Management ---
 export const getStudentsByClass = (classId: string): Student[] => {
   const classItem = getClassById(classId);
@@ -198,7 +246,6 @@ export const getStudentsByClass = (classId: string): Student[] => {
 export const getStudentsForSubjectInClass = (classId: string, subjectId: string): Student[] => {
   const classItem = getClassById(classId);
   if (!classItem) return [];
-  // Ensure students have subjectIds before filtering
   return classItem.students.filter(student => student.subjectIds && student.subjectIds.includes(subjectId));
 };
 
@@ -207,7 +254,9 @@ export const addStudent = (
   studentData: Omit<Student, 'id' | 'classId' | 'photoUrl' | 'subjectIds' | 'rollNumber'> & { photoUrl?: string; studentSubjectIds: string[] }
 ): Student | null => {
   const classItem = getClassById(classId);
-  if (!classItem) return null;
+  if (!classItem) { 
+      throw new Error("Class not found for adding student.");
+  }
 
   const classSubjects = classItem.subjectIds;
   const validStudentSubjects = studentData.studentSubjectIds.filter(id => classSubjects.includes(id));
@@ -222,10 +271,48 @@ export const addStudent = (
     photoUrl: studentData.photoUrl || `https://placehold.co/100x100.png`,
     subjectIds: validStudentSubjects,
   };
-  classItem.students.push(newStudent); // This mutates appData.classes indirectly
-  saveAppData(appData); // Save the entire appData
+  if (!classItem.students) {
+    classItem.students = [];
+  }
+  classItem.students.push(newStudent);
+  saveAppData(appData);
   return newStudent;
 };
+
+export const updateStudent = (
+    studentId: string,
+    classId: string,
+    updateData: Partial<Omit<Student, 'id' | 'classId' | 'rollNumber'>> & { studentSubjectIds?: string[] }
+): Student | null => {
+    const classItem = appData.classes.find(c => c.id === classId);
+    if (!classItem || !classItem.students) {
+        throw new Error("Class or student list not found.");
+    }
+
+    const studentIndex = classItem.students.findIndex(s => s.id === studentId);
+    if (studentIndex === -1) {
+        throw new Error("Student not found in the specified class.");
+    }
+
+    const studentToUpdate = classItem.students[studentIndex];
+
+    if (updateData.name) {
+        studentToUpdate.name = updateData.name.trim();
+    }
+    if (updateData.photoUrl) {
+        studentToUpdate.photoUrl = updateData.photoUrl;
+    }
+    if (updateData.studentSubjectIds) {
+        // Ensure provided subject IDs are valid for the class
+        const validStudentSubjects = updateData.studentSubjectIds.filter(id => classItem.subjectIds.includes(id));
+        studentToUpdate.subjectIds = validStudentSubjects;
+    }
+    
+    classItem.students[studentIndex] = studentToUpdate;
+    saveAppData(appData);
+    return studentToUpdate;
+};
+
 
 export const getSubjectsForClass = (classId: string): Subject[] => {
   const classItem = getClassById(classId);
