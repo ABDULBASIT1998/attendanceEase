@@ -1,5 +1,7 @@
 
 import type { AppData, ClassItem, Student, Subject } from '@/types';
+import Papa from 'papaparse';
+
 
 const LOCAL_STORAGE_KEY = 'attendeaseAppData';
 
@@ -23,7 +25,7 @@ const generateRollNumber = (classItem: ClassItem, existingStudentId?: string): s
   let maxNumber = 0;
   studentRollNumbers.forEach(rn => {
     const parts = rn.split('-');
-    const numStr = parts[parts.length -1]; // Get the last part, assuming format "PREFIX-NUMBER"
+    const numStr = parts[parts.length -1];
     if (numStr && !isNaN(parseInt(numStr))) {
       const num = parseInt(numStr);
       if (num > maxNumber) {
@@ -42,10 +44,12 @@ const generateDefaultStudents = (classItem: ClassItem, count: number): Student[]
   const tempClassItemForRollNumber = { ...classItem, students: [] as Student[] };
 
   for (let i = 0; i < count; i++) {
-    const studentName = `${classItem.name.replace('Class ', '')} Student ${i + 1}`;
+    const studentName = `${classItem.name.replace('Class ', '')} Student ${String(i + 1).padStart(2, '0')}`;
     const studentId = `${classItem.id}-student-${i + 1}`;
-    const studentSubjectIds = [...classItem.subjectIds]; 
-    
+    // Assign all class subjects to default students, or a subset for variety
+    const numSubjectsToAssign = Math.max(1, Math.floor(Math.random() * classItem.subjectIds.length) + 1);
+    const studentSubjectIds = [...classItem.subjectIds].sort(() => 0.5 - Math.random()).slice(0, numSubjectsToAssign);
+        
     const rollNumber = generateRollNumber(tempClassItemForRollNumber); 
     
     const newStudent: Student = {
@@ -119,15 +123,17 @@ const loadAppData = (): AppData => {
         }));
 
         parsedData.classes.forEach(cls => {
-          const tempClassForRollGen = { ...cls, students: [] as Student[] }; // For accurate roll number generation
+          const tempClassForRollGen = { ...cls, students: [] as Student[] }; 
           cls.students.forEach(s => {
-            if (!s.subjectIds) {
-              s.subjectIds = [...cls.subjectIds];
+            if (!s.subjectIds || s.subjectIds.length === 0) {
+               // Assign all class subjects if student has none, or a random subset
+              const numSubjectsToAssign = Math.max(1, Math.floor(Math.random() * cls.subjectIds.length) + 1);
+              s.subjectIds = [...cls.subjectIds].sort(() => 0.5 - Math.random()).slice(0, numSubjectsToAssign);
             }
             if (!s.rollNumber || !s.rollNumber.startsWith(cls.name.replace(/\s+/g, '').toUpperCase() + "-")) { 
               s.rollNumber = generateRollNumber(tempClassForRollGen, s.id); 
             }
-            tempClassForRollGen.students.push(s); // Add student to temp class for next roll no generation
+            tempClassForRollGen.students.push(s); 
           });
         });
         return parsedData;
@@ -161,8 +167,14 @@ export const getSubjectById = (subjectId: string): Subject | undefined => {
   return appData.subjects.find(s => s.id === subjectId);
 };
 
+export const getSubjectByName = (name: string): Subject | undefined => {
+  const trimmedName = name.trim().toLowerCase();
+  return appData.subjects.find(s => s.name.trim().toLowerCase() === trimmedName);
+}
+
 export const addSubject = (name: string): Subject => {
   const trimmedName = name.trim();
+  if (!trimmedName) throw new Error("Subject name cannot be empty.");
   const existingSubject = appData.subjects.find(s => s.name.toLowerCase() === trimmedName.toLowerCase());
   if (existingSubject) {
     throw new Error(`Subject "${trimmedName}" already exists.`);
@@ -178,6 +190,7 @@ export const addSubject = (name: string): Subject => {
 
 export const updateSubject = (subjectId: string, newName: string): Subject | null => {
     const trimmedNewName = newName.trim();
+    if (!trimmedNewName) throw new Error("Subject name cannot be empty.");
     const subjectIndex = appData.subjects.findIndex(s => s.id === subjectId);
     if (subjectIndex === -1) {
         throw new Error("Subject not found.");
@@ -198,7 +211,6 @@ export const deleteSubject = (subjectId: string): void => {
     }
     appData.subjects.splice(subjectIndex, 1);
 
-    // Remove references from classes and students
     appData.classes.forEach(cls => {
         cls.subjectIds = cls.subjectIds.filter(id => id !== subjectId);
         cls.students.forEach(student => {
@@ -219,8 +231,14 @@ export const getClassById = (classId: string): ClassItem | undefined => {
   return appData.classes.find(c => c.id === classId);
 };
 
+export const getClassByName = (name: string): ClassItem | undefined => {
+    const trimmedName = name.trim().toLowerCase();
+    return appData.classes.find(c => c.name.trim().toLowerCase() === trimmedName);
+}
+
 export const addClass = (name: string, subjectIds: string[]): ClassItem => {
   const trimmedName = name.trim();
+  if (!trimmedName) throw new Error("Class name cannot be empty.");
   const existingClass = appData.classes.find(c => c.name.toLowerCase() === trimmedName.toLowerCase());
   if (existingClass) {
     throw new Error(`Class "${trimmedName}" already exists.`);
@@ -238,6 +256,7 @@ export const addClass = (name: string, subjectIds: string[]): ClassItem => {
 
 export const updateClass = (classId: string, newName: string, newSubjectIds: string[]): ClassItem | null => {
     const trimmedNewName = newName.trim();
+    if (!trimmedNewName) throw new Error("Class name cannot be empty.");
     const classIndex = appData.classes.findIndex(c => c.id === classId);
     if (classIndex === -1) {
         throw new Error("Class not found.");
@@ -247,13 +266,12 @@ export const updateClass = (classId: string, newName: string, newSubjectIds: str
         throw new Error(`Class name "${trimmedNewName}" already exists.`);
     }
 
-    const oldClass = { ...appData.classes[classIndex] }; // For comparison
+    const oldClass = { ...appData.classes[classIndex] }; 
     const classToUpdate = appData.classes[classIndex];
     
     classToUpdate.name = trimmedNewName;
     classToUpdate.subjectIds = newSubjectIds;
 
-    // If class name changed, update student roll numbers
     if (oldClass.name !== trimmedNewName) {
         const tempClassForRollGen = { ...classToUpdate, students: [] as Student[] };
         classToUpdate.students.forEach(student => {
@@ -261,11 +279,9 @@ export const updateClass = (classId: string, newName: string, newSubjectIds: str
             tempClassForRollGen.students.push(student);
         });
     }
-    // Ensure students only have subjects that are part of the updated class subjects
     classToUpdate.students.forEach(student => {
         student.subjectIds = student.subjectIds.filter(subId => newSubjectIds.includes(subId));
     });
-
 
     saveAppData(appData);
     return classToUpdate;
@@ -295,12 +311,14 @@ export const getStudentsForSubjectInClass = (classId: string, subjectId: string)
 
 export const addStudent = (
   classId: string,
-  studentData: Omit<Student, 'id' | 'classId' | 'photoUrl' | 'subjectIds' | 'rollNumber'> & { photoUrl?: string; studentSubjectIds: string[] }
-): Student | null => {
+  studentData: { name: string; studentSubjectIds: string[]; photoUrl?: string }
+): Student => {
   const classItem = appData.classes.find(c => c.id === classId);
   if (!classItem) { 
       throw new Error("Class not found for adding student.");
   }
+  const trimmedName = studentData.name.trim();
+  if(!trimmedName) throw new Error("Student name cannot be empty.");
 
   const classSubjects = classItem.subjectIds;
   const validStudentSubjects = studentData.studentSubjectIds.filter(id => classSubjects.includes(id));
@@ -308,9 +326,9 @@ export const addStudent = (
   const rollNumber = generateRollNumber(classItem);
 
   const newStudent: Student = {
-    name: studentData.name.trim(),
+    name: trimmedName,
     rollNumber: rollNumber,
-    id: `student-${studentData.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
+    id: `student-${trimmedName.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
     classId,
     photoUrl: studentData.photoUrl || `https://placehold.co/100x100.png`,
     subjectIds: validStudentSubjects,
@@ -341,9 +359,11 @@ export const updateStudent = (
     const studentToUpdate = classItem.students[studentIndex];
 
     if (updateData.name) {
-        studentToUpdate.name = updateData.name.trim();
+        const trimmedName = updateData.name.trim();
+        if(!trimmedName) throw new Error("Student name cannot be empty.");
+        studentToUpdate.name = trimmedName;
     }
-    if (updateData.photoUrl !== undefined) { // Check for undefined to allow setting photoUrl to null (remove photo)
+    if (updateData.photoUrl !== undefined) { 
         studentToUpdate.photoUrl = updateData.photoUrl;
     }
     if (updateData.studentSubjectIds) {
@@ -369,9 +389,111 @@ export const deleteStudent = (classId: string, studentId: string): void => {
     saveAppData(appData);
 };
 
+export type BulkUploadResult = {
+    successCount: number;
+    errorCount: number;
+    errors: string[];
+};
+
+export const addMultipleStudents = (csvText: string): BulkUploadResult => {
+    const result: BulkUploadResult = { successCount: 0, errorCount: 0, errors: [] };
+    
+    const parsed = Papa.parse(csvText, {
+        header: true,
+        skipEmptyLines: true,
+    });
+
+    if (parsed.errors.length > 0) {
+        parsed.errors.forEach(err => result.errors.push(`CSV Parsing Error (Row ${err.row}): ${err.message}`));
+        result.errorCount += parsed.errors.length;
+        return result;
+    }
+    
+    const requiredHeaders = ["Student Name", "Class Name", "Subjects"];
+    const actualHeaders = parsed.meta.fields || [];
+    for (const header of requiredHeaders) {
+        if (!actualHeaders.includes(header)) {
+            result.errors.push(`CSV Error: Missing required header column: "${header}". Ensure your CSV has headers: ${requiredHeaders.join(', ')}.`);
+            result.errorCount = parsed.data.length; // Mark all as error if headers missing
+            return result;
+        }
+    }
+
+
+    parsed.data.forEach((row: any, index: number) => {
+        const studentName = row["Student Name"]?.trim();
+        const className = row["Class Name"]?.trim();
+        const subjectsStr = row["Subjects"]?.trim();
+
+        if (!studentName) {
+            result.errors.push(`Row ${index + 2}: Student Name is missing.`);
+            result.errorCount++;
+            return;
+        }
+        if (!className) {
+            result.errors.push(`Row ${index + 2} (Student: ${studentName}): Class Name is missing.`);
+            result.errorCount++;
+            return;
+        }
+        
+        const classItem = getClassByName(className);
+        if (!classItem) {
+            result.errors.push(`Row ${index + 2} (Student: ${studentName}): Class "${className}" not found.`);
+            result.errorCount++;
+            return;
+        }
+
+        let studentSubjectIds: string[] = [];
+        if (subjectsStr) {
+            const subjectNames = subjectsStr.split(',').map(s => s.trim()).filter(s => s);
+            for (const subName of subjectNames) {
+                const subject = getSubjectByName(subName);
+                if (!subject) {
+                    result.errors.push(`Row ${index + 2} (Student: ${studentName}): Subject "${subName}" not found.`);
+                    result.errorCount++;
+                    return; // Stop processing this student if a subject is invalid
+                }
+                if (!classItem.subjectIds.includes(subject.id)) {
+                     result.errors.push(`Row ${index + 2} (Student: ${studentName}): Subject "${subName}" is not assigned to class "${className}".`);
+                    result.errorCount++;
+                    return;
+                }
+                studentSubjectIds.push(subject.id);
+            }
+        } else {
+            // If no subjects string is provided, assign no subjects to the student (or default to all class subjects if desired)
+            // For now, let's assume no subjects specified means student is enrolled in none of the class's specific subjects.
+        }
+
+
+        try {
+            addStudent(classItem.id, {
+                name: studentName,
+                studentSubjectIds: studentSubjectIds,
+                // photoUrl can be omitted for default placeholder
+            });
+            result.successCount++;
+        } catch (e: any) {
+            result.errors.push(`Row ${index + 2} (Student: ${studentName}): ${e.message}`);
+            result.errorCount++;
+        }
+    });
+
+    saveAppData(appData); // Save once after all processing
+    return result;
+};
+
 
 export const getSubjectsForClass = (classId: string): Subject[] => {
   const classItem = getClassById(classId);
   if (!classItem) return [];
   return appData.subjects.filter(subject => classItem.subjectIds.includes(subject.id));
 };
+
+// For resetting data during development
+export const resetAndSeedData = () => {
+  appData = getDefaultAppData();
+  saveAppData(appData);
+};
+// if (typeof window !== 'undefined') { (window as any).resetAndSeedData = resetAndSeedData; }
+

@@ -21,8 +21,9 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { ScrollArea } from '@/components/ui/scroll-area';
+
 
 export default function ManageSubjectsPage() {
   const router = useRouter();
@@ -107,8 +108,8 @@ export default function ManageSubjectsPage() {
         <ArrowLeft className="mr-2 h-4 w-4" /> Back to Admin Panel
       </Button>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <Card className="shadow-lg">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <Card className="lg:col-span-1 shadow-lg">
           <CardHeader>
             <CardTitle className="text-2xl flex items-center">
               <PlusCircle className="mr-2 h-6 w-6 text-primary" /> Add New Subject
@@ -118,53 +119,55 @@ export default function ManageSubjectsPage() {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="subjectName" className="text-lg">Subject Name</Label>
+                <Label htmlFor="subjectName" className="text-md font-medium">Subject Name</Label>
                 <Input
                   id="subjectName"
                   type="text"
-                  placeholder="e.g., Advanced Physics, Creative Writing"
+                  placeholder="e.g., Advanced Physics"
                   value={subjectName}
                   onChange={(e) => setSubjectName(e.target.value)}
                   required
-                  className="text-base py-3"
+                  className="text-base py-2"
                 />
               </div>
-              <Button type="submit" className="w-full text-lg py-3" disabled={isLoading}>
+              <Button type="submit" className="w-full text-base py-3" disabled={isLoading}>
                 {isLoading ? 'Adding Subject...' : 'Add Subject'}
               </Button>
             </form>
           </CardContent>
         </Card>
 
-        <Card className="shadow-lg">
+        <Card className="lg:col-span-2 shadow-lg">
           <CardHeader>
             <CardTitle className="text-2xl flex items-center">
               <ListChecks className="mr-2 h-6 w-6 text-primary" /> Existing Subjects
             </CardTitle>
-            <CardDescription>List of all available subjects.</CardDescription>
+            <CardDescription>List of all available subjects ({existingSubjects.length}).</CardDescription>
           </CardHeader>
           <CardContent>
             {existingSubjects.length === 0 ? (
-              <p className="text-muted-foreground">No subjects found. Add one above!</p>
+              <p className="text-muted-foreground text-center py-4">No subjects found. Add one above!</p>
             ) : (
-              <ul className="space-y-2 max-h-[400px] overflow-y-auto">
-                {existingSubjects.map(subject => (
-                  <li key={subject.id} className="p-3 border rounded-md bg-card flex items-center justify-between">
-                    <div className="flex items-center">
-                      <BookOpen className="mr-3 h-5 w-5 text-muted-foreground" />
-                      {subject.name}
+              <ScrollArea className="max-h-[calc(100vh-20rem)] pr-2">
+                <div className="space-y-3">
+                  {existingSubjects.map(subject => (
+                    <div key={subject.id} className="p-4 border rounded-lg bg-card/50 flex items-center justify-between hover:shadow-md transition-shadow">
+                      <div className="flex items-center">
+                        <BookOpen className="mr-3 h-5 w-5 text-primary" />
+                        <span className="font-medium">{subject.name}</span>
+                      </div>
+                      <div className="space-x-2">
+                        <Button variant="outline" size="sm" onClick={() => handleEditSubject(subject)} className="h-8 px-3">
+                          <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit
+                        </Button>
+                        <Button variant="destructive" size="sm" onClick={() => openDeleteDialog(subject)} className="h-8 px-3">
+                          <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
+                        </Button>
+                      </div>
                     </div>
-                    <div className="space-x-2">
-                      <Button variant="outline" size="sm" onClick={() => handleEditSubject(subject)}>
-                        <Pencil className="mr-2 h-4 w-4" /> Edit
-                      </Button>
-                      <Button variant="destructive" size="sm" onClick={() => openDeleteDialog(subject)}>
-                        <Trash2 className="mr-2 h-4 w-4" /> Delete
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                  ))}
+                </div>
+              </ScrollArea>
             )}
           </CardContent>
         </Card>

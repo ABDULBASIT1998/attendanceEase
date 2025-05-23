@@ -4,17 +4,18 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import type { ClassItem, Student, Subject } from '@/types';
-import { addStudent, getAllClasses, getStudentsByClass, getSubjectsForClass, getAllSubjects as getAllGlobalSubjects, updateStudent, deleteStudent } from '@/lib/mock-data';
-import { UserPlus, Users, ArrowLeft, ListChecks, BookOpen, Upload, Image as ImageIcon, Pencil, Trash2 } from 'lucide-react';
+import { addStudent, getAllClasses, getStudentsByClass, getSubjectsForClass, getAllSubjects as getAllGlobalSubjects, updateStudent, deleteStudent, addMultipleStudents, BulkUploadResult } from '@/lib/mock-data';
+import { UserPlus, Users, ArrowLeft, ListChecks, BookOpen, Upload, Image as ImageIcon, Pencil, Trash2, FileUp } from 'lucide-react';
 import Image from 'next/image';
 import { EditStudentModal } from '@/components/admin/EditStudentModal';
+import { BulkUploadStudentsModal } from '@/components/admin/BulkUploadStudentsModal';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +26,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { ScrollArea } from '@/components/ui/scroll-area';
+
 
 export default function ManageStudentsPage() {
   const router = useRouter();
@@ -49,6 +52,7 @@ export default function ManageStudentsPage() {
 
   const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isBulkUploadModalOpen, setIsBulkUploadModalOpen] = useState(false);
 
 
   const fetchAllData = () => {
@@ -110,8 +114,6 @@ export default function ManageStudentsPage() {
     }
     setIsLoading(true);
     try {
-      // For simulation, if a file is selected, we use its blob URL (photoPreviewUrl)
-      // Otherwise, we use the default placeholder. In a real app, this would be an upload process.
       const photoUrlForStorage = photoPreviewUrl || `https://placehold.co/100x100.png`;
       
       addStudent(selectedClassIdForNewStudent, { 
@@ -125,6 +127,7 @@ export default function ManageStudentsPage() {
       setPhotoPreviewUrl(null);
       if(fileInputRef.current) fileInputRef.current.value = "";
       setSelectedStudentSubjectIdsForNewStudent([]);
+      // Re-fetch students for the currently selected class to show the new student
       if (selectedClassIdForNewStudent) {
         setStudentsInSelectedClass(getStudentsByClass(selectedClassIdForNewStudent));
       }
@@ -159,13 +162,13 @@ export default function ManageStudentsPage() {
         let photoUrlToUpdate = studentToEdit?.photoUrl; 
 
         if (updatedData.photoFile) { 
+             // In a real app, upload file here and get URL. For mock:
              photoUrlToUpdate = URL.createObjectURL(updatedData.photoFile); 
         } else if (updatedData.photoUrl === null) { 
             photoUrlToUpdate = `https://placehold.co/100x100.png`;
         } else if (updatedData.photoUrl && updatedData.photoUrl !== studentToEdit?.photoUrl) { 
             photoUrlToUpdate = updatedData.photoUrl;
         }
-
 
         const dataForUpdate = { ...updatedData, photoUrl: photoUrlToUpdate };
         delete dataForUpdate.photoFile; 
@@ -174,7 +177,7 @@ export default function ManageStudentsPage() {
         toast({ title: "Success", description: "Student updated successfully." });
         if (selectedClassIdForNewStudent) { 
             setStudentsInSelectedClass(getStudentsByClass(selectedClassIdForNewStudent));
-        } else if (classForStudentToEdit) { // If updating from student list without a class selected in form
+        } else if (classForStudentToEdit) {
              setStudentsInSelectedClass(getStudentsByClass(classForStudentToEdit.id));
         }
         setIsEditModalOpen(false);
@@ -208,6 +211,30 @@ export default function ManageStudentsPage() {
     }
   };
 
+  const handleBulkUploadComplete = (result: BulkUploadResult) => {
+    if (result.successCount > 0) {
+        toast({
+            title: "Bulk Upload Successful",
+            description: `${result.successCount} student(s) uploaded.`,
+        });
+    }
+    if (result.errorCount > 0) {
+        toast({
+            title: "Bulk Upload Errors",
+            description: `${result.errorCount} student(s) could not be uploaded. ${result.errors.length > 0 ? 'First error: ' + result.errors[0] : ''}`,
+            variant: "destructive",
+            duration: 10000, // Show longer for errors
+        });
+        // Log all errors to console for debugging
+        console.error("Bulk upload errors:", result.errors);
+    }
+    fetchAllData(); // Refresh all data
+    if (selectedClassIdForNewStudent) { // Refresh student list if a class is selected
+        setStudentsInSelectedClass(getStudentsByClass(selectedClassIdForNewStudent));
+    }
+    setIsBulkUploadModalOpen(false);
+  };
+
 
   return (
     <div className="container mx-auto py-8 px-4">
@@ -215,173 +242,199 @@ export default function ManageStudentsPage() {
         <ArrowLeft className="mr-2 h-4 w-4" /> Back to Admin Panel
       </Button>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <Card className="shadow-lg">
-          <CardHeader>
-            <CardTitle className="text-2xl flex items-center">
-              <UserPlus className="mr-2 h-6 w-6 text-primary" /> Add New Student
-            </CardTitle>
-            <CardDescription>Enter student details, assign to a class, and select their subjects. Roll number is auto-generated.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmitNewStudent} className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="studentName" className="text-lg">Student Name</Label>
-                <Input
-                  id="studentName"
-                  type="text"
-                  placeholder="e.g., John Doe"
-                  value={studentName}
-                  onChange={(e) => setStudentName(e.target.value)}
-                  required
-                  className="text-base py-3"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="photo" className="text-lg">Student Photo</Label>
-                <div className="flex items-center space-x-4">
-                  {photoPreviewUrl ? (
-                    <Image src={photoPreviewUrl} alt="Student preview" width={80} height={80} className="rounded-md object-cover border" data-ai-hint="student photo preview" />
-                  ) : (
-                    <div className="w-20 h-20 rounded-md bg-muted flex items-center justify-center border">
-                      <ImageIcon className="w-10 h-10 text-muted-foreground" />
-                    </div>
-                  )}
-                  <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                    <Upload className="mr-2 h-4 w-4" /> {selectedPhotoFile ? "Change Photo" : "Upload Photo"}
-                  </Button>
-                  <Input
-                    id="photo"
-                    type="file"
-                    accept="image/*"
-                    ref={fileInputRef}
-                    onChange={handlePhotoChange}
-                    className="hidden" 
-                  />
-                </div>
-                 <p className="text-xs text-muted-foreground mt-1">Simulated upload. Image is for preview only.</p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="class-select-new-student" className="text-lg flex items-center">
-                  <Users className="mr-2 h-5 w-5 text-muted-foreground" /> Assign to Class
-                </Label>
-                {allClasses.length === 0 ? (
-                     <p className="text-sm text-muted-foreground">No classes available. Please <Button variant="link" onClick={() => router.push('/admin/classes')} className="p-0 h-auto">add classes</Button> first.</p>
-                ) : (
-                <Select
-                  onValueChange={(value) => setSelectedClassIdForNewStudent(value)}
-                  value={selectedClassIdForNewStudent || ""}
-                  
-                >
-                  <SelectTrigger id="class-select-new-student" className="w-full text-base py-6">
-                    <SelectValue placeholder="Choose a class..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {allClasses.map((classItem) => (
-                      <SelectItem key={classItem.id} value={classItem.id} className="text-base py-2">
-                        {classItem.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                )}
-              </div>
-
-              {selectedClassIdForNewStudent && availableClassSubjectsForNewStudent.length > 0 && (
-                <div className="space-y-2">
-                  <Label className="text-lg flex items-center">
-                    <BookOpen className="mr-2 h-5 w-5 text-muted-foreground" /> Assign Subjects to Student
-                  </Label>
-                  <div className="max-h-48 overflow-y-auto space-y-2 border p-4 rounded-md">
-                    {availableClassSubjectsForNewStudent.map(subject => (
-                      <div key={subject.id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`student-subject-new-${subject.id}`}
-                          checked={selectedStudentSubjectIdsForNewStudent.includes(subject.id)}
-                          onCheckedChange={() => handleStudentSubjectToggleForNewStudent(subject.id)}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-1 space-y-8">
+            <Card className="shadow-lg">
+                <CardHeader>
+                    <CardTitle className="text-2xl flex items-center">
+                    <UserPlus className="mr-2 h-6 w-6 text-primary" /> Add New Student
+                    </CardTitle>
+                    <CardDescription>Enter student details, assign to a class, and select their subjects. Roll number is auto-generated.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <form onSubmit={handleSubmitNewStudent} className="space-y-6">
+                    <div className="space-y-2">
+                        <Label htmlFor="studentName" className="text-md font-medium">Student Name</Label>
+                        <Input
+                        id="studentName"
+                        type="text"
+                        placeholder="e.g., John Doe"
+                        value={studentName}
+                        onChange={(e) => setStudentName(e.target.value)}
+                        required
+                        className="text-base py-2"
                         />
-                        <Label htmlFor={`student-subject-new-${subject.id}`} className="font-normal cursor-pointer">
-                          {subject.name}
+                    </div>
+                    
+                    <div className="space-y-2">
+                        <Label htmlFor="photo" className="text-md font-medium">Student Photo</Label>
+                        <div className="flex items-center space-x-4">
+                        {photoPreviewUrl ? (
+                            <Image src={photoPreviewUrl} alt="Student preview" width={64} height={64} className="rounded-md object-cover border" data-ai-hint="student photo preview" />
+                        ) : (
+                            <div className="w-16 h-16 rounded-md bg-muted flex items-center justify-center border">
+                            <ImageIcon className="w-8 h-8 text-muted-foreground" />
+                            </div>
+                        )}
+                        <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                            <Upload className="mr-2 h-4 w-4" /> {selectedPhotoFile ? "Change" : "Upload"}
+                        </Button>
+                        <Input
+                            id="photo"
+                            type="file"
+                            accept="image/*"
+                            ref={fileInputRef}
+                            onChange={handlePhotoChange}
+                            className="hidden" 
+                        />
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">Optional. Simulated upload for preview.</p>
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="class-select-new-student" className="text-md font-medium flex items-center">
+                        <Users className="mr-2 h-5 w-5 text-muted-foreground" /> Assign to Class
                         </Label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {selectedClassIdForNewStudent && availableClassSubjectsForNewStudent.length === 0 && (
-                 <p className="text-sm text-muted-foreground">The selected class has no subjects assigned. Please <Button variant="link" onClick={() => router.push('/admin/classes')} className="p-0 h-auto">assign subjects to the class</Button> first.</p>
-              )}
+                        {allClasses.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No classes available. Please <Button variant="link" onClick={() => router.push('/admin/classes')} className="p-0 h-auto">add classes</Button> first.</p>
+                        ) : (
+                        <Select
+                        onValueChange={(value) => setSelectedClassIdForNewStudent(value)}
+                        value={selectedClassIdForNewStudent || ""}
+                        >
+                        <SelectTrigger id="class-select-new-student" className="w-full text-base py-3">
+                            <SelectValue placeholder="Choose a class..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {allClasses.map((classItem) => (
+                            <SelectItem key={classItem.id} value={classItem.id} className="text-base py-2">
+                                {classItem.name}
+                            </SelectItem>
+                            ))}
+                        </SelectContent>
+                        </Select>
+                        )}
+                    </div>
 
-              <Button type="submit" className="w-full text-lg py-3" disabled={isLoading || allClasses.length === 0 || (selectedClassIdForNewStudent && availableClassSubjectsForNewStudent.length === 0 && allGlobalSubjects.length > 0) || !selectedClassIdForNewStudent}>
-                {isLoading ? 'Adding Student...' : 'Add Student'}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+                    {selectedClassIdForNewStudent && availableClassSubjectsForNewStudent.length > 0 && (
+                        <div className="space-y-2">
+                        <Label className="text-md font-medium flex items-center">
+                            <BookOpen className="mr-2 h-5 w-5 text-muted-foreground" /> Assign Subjects to Student
+                        </Label>
+                        <ScrollArea className="h-40 border p-3 rounded-md">
+                          <div className="space-y-2">
+                            {availableClassSubjectsForNewStudent.map(subject => (
+                            <div key={subject.id} className="flex items-center space-x-3">
+                                <Checkbox
+                                id={`student-subject-new-${subject.id}`}
+                                checked={selectedStudentSubjectIdsForNewStudent.includes(subject.id)}
+                                onCheckedChange={() => handleStudentSubjectToggleForNewStudent(subject.id)}
+                                />
+                                <Label htmlFor={`student-subject-new-${subject.id}`} className="font-normal cursor-pointer text-sm">
+                                {subject.name}
+                                </Label>
+                            </div>
+                            ))}
+                          </div>
+                        </ScrollArea>
+                        </div>
+                    )}
+                    {selectedClassIdForNewStudent && availableClassSubjectsForNewStudent.length === 0 && allGlobalSubjects.length > 0 && (
+                        <p className="text-sm text-muted-foreground">The selected class has no subjects assigned. Please <Button variant="link" onClick={() => router.push('/admin/classes')} className="p-0 h-auto">assign subjects to the class</Button> first.</p>
+                    )}
 
-        <Card className="shadow-lg">
+                    <Button type="submit" className="w-full text-base py-3" disabled={isLoading || allClasses.length === 0 || (selectedClassIdForNewStudent && availableClassSubjectsForNewStudent.length === 0 && allGlobalSubjects.length > 0) || !selectedClassIdForNewStudent}>
+                        {isLoading ? 'Adding Student...' : 'Add Student'}
+                    </Button>
+                    </form>
+                </CardContent>
+            </Card>
+            <Card className="shadow-lg">
+                <CardHeader>
+                    <CardTitle className="text-2xl flex items-center">
+                        <FileUp className="mr-2 h-6 w-6 text-primary" /> Bulk Upload Students
+                    </CardTitle>
+                    <CardDescription>Upload multiple students at once using a CSV file.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Button onClick={() => setIsBulkUploadModalOpen(true)} className="w-full text-base py-3">
+                        Open Bulk Upload
+                    </Button>
+                </CardContent>
+            </Card>
+        </div>
+
+
+        <Card className="lg:col-span-2 shadow-lg">
           <CardHeader>
             <CardTitle className="text-2xl flex items-center">
-              <ListChecks className="mr-2 h-6 w-6 text-primary" /> Students in Selected Class
+              <ListChecks className="mr-2 h-6 w-6 text-primary" /> Students in Class
             </CardTitle>
             <CardDescription>
-              {selectedClassIdForNewStudent ? `Students in ${allClasses.find(c=>c.id === selectedClassIdForNewStudent)?.name || 'Selected Class'}` : 'Select a class to view students.'}
+              {selectedClassIdForNewStudent ? `Students in ${allClasses.find(c=>c.id === selectedClassIdForNewStudent)?.name || 'Selected Class'} (${studentsInSelectedClass.length})` : 'Select a class from "Add New Student" to view students.'}
             </CardDescription>
           </CardHeader>
           <CardContent>
             {!selectedClassIdForNewStudent ? (
-              <p className="text-muted-foreground">Please select a class from the "Add New Student" form to see the list of students.</p>
+              <p className="text-muted-foreground text-center py-4">Please select a class to see the list of students.</p>
             ) : studentsInSelectedClass.length === 0 ? (
-              <p className="text-muted-foreground">No students found in this class.</p>
+              <p className="text-muted-foreground text-center py-4">No students found in this class.</p>
             ) : (
-              <ul className="space-y-3 max-h-[calc(100vh-25rem)] overflow-y-auto">
-                {studentsInSelectedClass.map(student => (
-                  <li key={student.id} className="p-3 border rounded-md bg-card">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                            <Image
-                            src={student.photoUrl || `https://placehold.co/40x40.png`}
-                            alt={student.name}
-                            width={40}
-                            height={40}
-                            className="rounded-full object-cover border"
-                            data-ai-hint="student avatar"
-                            />
-                            <div>
-                            <p className="font-semibold">{student.name}</p>
-                            <p className="text-xs text-muted-foreground">Roll No: {student.rollNumber}</p>
-                            </div>
+              <ScrollArea className="max-h-[calc(100vh-20rem)] pr-2">
+                <div className="space-y-4">
+                  {studentsInSelectedClass.map(student => (
+                    <Card key={student.id} className="bg-card/50 hover:shadow-md transition-shadow">
+                      <CardContent className="p-4 flex items-start space-x-4">
+                        <Image
+                          src={student.photoUrl || `https://placehold.co/64x64.png`}
+                          alt={student.name}
+                          width={64}
+                          height={64}
+                          className="rounded-md object-cover border"
+                          data-ai-hint="student avatar"
+                        />
+                        <div className="flex-grow">
+                          <h3 className="font-semibold text-lg">{student.name}</h3>
+                          <p className="text-sm text-muted-foreground">Roll No: {student.rollNumber}</p>
+                          <div className="mt-1">
+                              <p className="text-xs font-medium text-muted-foreground">Enrolled Subjects:</p>
+                              {student.subjectIds && student.subjectIds.length > 0 ? (
+                                  <ul className="list-disc list-inside pl-1">
+                                  {student.subjectIds.map(subId => (
+                                      <li key={subId} className="text-xs text-muted-foreground">{getSubjectNameById(subId)}</li>
+                                  ))}
+                                  </ul>
+                              ) : (
+                                  <p className="text-xs text-muted-foreground italic">No subjects assigned.</p>
+                              )}
+                          </div>
                         </div>
-                        <div className="space-x-2">
-                            <Button variant="outline" size="sm" onClick={() => handleEditStudent(student)}>
-                                <Pencil className="mr-2 h-4 w-4" /> Edit
+                        <div className="flex flex-col space-y-2 items-end shrink-0">
+                            <Button variant="outline" size="sm" onClick={() => handleEditStudent(student)} className="h-8 px-3 w-full">
+                                <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit
                             </Button>
-                            <Button variant="destructive" size="sm" onClick={() => openDeleteDialog(student)}>
-                                <Trash2 className="mr-2 h-4 w-4" /> Delete
+                            <Button variant="destructive" size="sm" onClick={() => openDeleteDialog(student)} className="h-8 px-3 w-full">
+                                <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
                             </Button>
                         </div>
-                    </div>
-                    <div className="mt-2">
-                        <p className="text-xs font-medium">Enrolled Subjects:</p>
-                        {student.subjectIds && student.subjectIds.length > 0 ? (
-                            <ul className="list-disc list-inside pl-1">
-                            {student.subjectIds.map(subId => (
-                                <li key={subId} className="text-xs text-muted-foreground">{getSubjectNameById(subId)}</li>
-                            ))}
-                            </ul>
-                        ) : (
-                            <p className="text-xs text-muted-foreground italic">No subjects assigned.</p>
-                        )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </ScrollArea>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {isBulkUploadModalOpen && (
+        <BulkUploadStudentsModal
+            isOpen={isBulkUploadModalOpen}
+            onClose={() => setIsBulkUploadModalOpen(false)}
+            onUploadComplete={handleBulkUploadComplete}
+        />
+      )}
+
       {isEditModalOpen && studentToEdit && classForStudentToEdit && (
         <EditStudentModal
           isOpen={isEditModalOpen}
