@@ -11,10 +11,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import type { ClassItem, Student, Subject } from '@/types';
-import { addStudent, getAllClasses, getStudentsByClass, getSubjectsForClass, getAllSubjects as getAllGlobalSubjects, updateStudent } from '@/lib/mock-data';
-import { UserPlus, Users, ArrowLeft, ListChecks, BookOpen, Upload, Image as ImageIcon, Pencil } from 'lucide-react';
+import { addStudent, getAllClasses, getStudentsByClass, getSubjectsForClass, getAllSubjects as getAllGlobalSubjects, updateStudent, deleteStudent } from '@/lib/mock-data';
+import { UserPlus, Users, ArrowLeft, ListChecks, BookOpen, Upload, Image as ImageIcon, Pencil, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import { EditStudentModal } from '@/components/admin/EditStudentModal';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function ManageStudentsPage() {
   const router = useRouter();
@@ -36,6 +46,9 @@ export default function ManageStudentsPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [studentToEdit, setStudentToEdit] = useState<Student | null>(null);
   const [classForStudentToEdit, setClassForStudentToEdit] = useState<ClassItem | null>(null);
+
+  const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
 
   const fetchAllData = () => {
@@ -91,17 +104,19 @@ export default function ManageStudentsPage() {
       toast({ title: "Error", description: "Please select a class for the student.", variant: "destructive" });
       return;
     }
-    if (selectedStudentSubjectIdsForNewStudent.length === 0) {
+    if (selectedStudentSubjectIdsForNewStudent.length === 0 && availableClassSubjectsForNewStudent.length > 0) {
         toast({ title: "Error", description: "Please select at least one subject for the student.", variant: "destructive" });
         return;
     }
     setIsLoading(true);
     try {
-      const placeholderPhotoUrl = photoPreviewUrl || `https://placehold.co/100x100.png`;
+      // For simulation, if a file is selected, we use its blob URL (photoPreviewUrl)
+      // Otherwise, we use the default placeholder. In a real app, this would be an upload process.
+      const photoUrlForStorage = photoPreviewUrl || `https://placehold.co/100x100.png`;
       
       addStudent(selectedClassIdForNewStudent, { 
         name: studentName, 
-        photoUrl: placeholderPhotoUrl, 
+        photoUrl: photoUrlForStorage, 
         studentSubjectIds: selectedStudentSubjectIdsForNewStudent 
       });
       toast({ title: "Success", description: `Student "${studentName}" added to class.` });
@@ -110,7 +125,6 @@ export default function ManageStudentsPage() {
       setPhotoPreviewUrl(null);
       if(fileInputRef.current) fileInputRef.current.value = "";
       setSelectedStudentSubjectIdsForNewStudent([]);
-      // Don't reset selectedClassIdForNewStudent to keep the student list visible
       if (selectedClassIdForNewStudent) {
         setStudentsInSelectedClass(getStudentsByClass(selectedClassIdForNewStudent));
       }
@@ -139,27 +153,29 @@ export default function ManageStudentsPage() {
   const handleUpdateStudent = (
     studentId: string, 
     classId: string,
-    updatedData: Partial<Omit<Student, 'id' | 'classId' | 'rollNumber'>> & { studentSubjectIds?: string[], photoFile?: File | null }
+    updatedData: Partial<Omit<Student, 'id' | 'classId' | 'rollNumber'>> & { studentSubjectIds?: string[], photoFile?: File | null, photoUrl?: string | null }
   ) => {
     try {
-        // Simulate photo upload if photoFile is present, otherwise use existing/updated photoUrl
-        let photoUrlToUpdate = studentToEdit?.photoUrl; // Keep existing if no new file/url
-        if (updatedData.photoFile) { // New file uploaded
-             photoUrlToUpdate = URL.createObjectURL(updatedData.photoFile); // For preview, in real app upload and get URL
-        } else if (updatedData.photoUrl === null) { // Photo explicitly removed
+        let photoUrlToUpdate = studentToEdit?.photoUrl; 
+
+        if (updatedData.photoFile) { 
+             photoUrlToUpdate = URL.createObjectURL(updatedData.photoFile); 
+        } else if (updatedData.photoUrl === null) { 
             photoUrlToUpdate = `https://placehold.co/100x100.png`;
-        } else if (updatedData.photoUrl) { // Direct URL change (less likely with file input)
+        } else if (updatedData.photoUrl && updatedData.photoUrl !== studentToEdit?.photoUrl) { 
             photoUrlToUpdate = updatedData.photoUrl;
         }
 
 
         const dataForUpdate = { ...updatedData, photoUrl: photoUrlToUpdate };
-        delete dataForUpdate.photoFile; // Don't pass File object to mock data fn
+        delete dataForUpdate.photoFile; 
 
         updateStudent(studentId, classId, dataForUpdate);
         toast({ title: "Success", description: "Student updated successfully." });
-        if (selectedClassIdForNewStudent) { // Refresh student list if a class is selected
+        if (selectedClassIdForNewStudent) { 
             setStudentsInSelectedClass(getStudentsByClass(selectedClassIdForNewStudent));
+        } else if (classForStudentToEdit) { // If updating from student list without a class selected in form
+             setStudentsInSelectedClass(getStudentsByClass(classForStudentToEdit.id));
         }
         setIsEditModalOpen(false);
         setStudentToEdit(null);
@@ -168,6 +184,27 @@ export default function ManageStudentsPage() {
     } catch (error: any) {
         toast({ title: "Error", description: error.message || "Failed to update student.", variant: "destructive" });
         return false;
+    }
+  };
+
+  const openDeleteDialog = (student: Student) => {
+    setStudentToDelete(student);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteStudent = () => {
+    if (!studentToDelete) return;
+    try {
+      deleteStudent(studentToDelete.classId, studentToDelete.id);
+      toast({ title: "Success", description: `Student "${studentToDelete.name}" deleted.` });
+      if (selectedClassIdForNewStudent) {
+        setStudentsInSelectedClass(getStudentsByClass(selectedClassIdForNewStudent));
+      }
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to delete student.", variant: "destructive" });
+    } finally {
+      setIsDeleteDialogOpen(false);
+      setStudentToDelete(null);
     }
   };
 
@@ -277,7 +314,7 @@ export default function ManageStudentsPage() {
                  <p className="text-sm text-muted-foreground">The selected class has no subjects assigned. Please <Button variant="link" onClick={() => router.push('/admin/classes')} className="p-0 h-auto">assign subjects to the class</Button> first.</p>
               )}
 
-              <Button type="submit" className="w-full text-lg py-3" disabled={isLoading || allClasses.length === 0 || (selectedClassIdForNewStudent && availableClassSubjectsForNewStudent.length === 0) || !selectedClassIdForNewStudent}>
+              <Button type="submit" className="w-full text-lg py-3" disabled={isLoading || allClasses.length === 0 || (selectedClassIdForNewStudent && availableClassSubjectsForNewStudent.length === 0 && allGlobalSubjects.length > 0) || !selectedClassIdForNewStudent}>
                 {isLoading ? 'Adding Student...' : 'Add Student'}
               </Button>
             </form>
@@ -317,9 +354,14 @@ export default function ManageStudentsPage() {
                             <p className="text-xs text-muted-foreground">Roll No: {student.rollNumber}</p>
                             </div>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => handleEditStudent(student)}>
-                            <Pencil className="mr-2 h-4 w-4" /> Edit
-                        </Button>
+                        <div className="space-x-2">
+                            <Button variant="outline" size="sm" onClick={() => handleEditStudent(student)}>
+                                <Pencil className="mr-2 h-4 w-4" /> Edit
+                            </Button>
+                            <Button variant="destructive" size="sm" onClick={() => openDeleteDialog(student)}>
+                                <Trash2 className="mr-2 h-4 w-4" /> Delete
+                            </Button>
+                        </div>
                     </div>
                     <div className="mt-2">
                         <p className="text-xs font-medium">Enrolled Subjects:</p>
@@ -353,6 +395,24 @@ export default function ManageStudentsPage() {
           allGlobalSubjects={allGlobalSubjects}
           onUpdate={handleUpdateStudent}
         />
+      )}
+       {studentToDelete && (
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete the student "{studentToDelete.name}".
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90">
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </div>
   );

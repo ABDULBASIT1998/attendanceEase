@@ -9,9 +9,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import type { Subject } from '@/types';
-import { addSubject, getAllSubjects, updateSubject } from '@/lib/mock-data';
-import { PlusCircle, BookOpen, ArrowLeft, ListChecks, Pencil } from 'lucide-react';
+import { addSubject, getAllSubjects, updateSubject, deleteSubject } from '@/lib/mock-data';
+import { PlusCircle, BookOpen, ArrowLeft, ListChecks, Pencil, Trash2 } from 'lucide-react';
 import { EditSubjectModal } from '@/components/admin/EditSubjectModal';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export default function ManageSubjectsPage() {
   const router = useRouter();
@@ -21,6 +32,8 @@ export default function ManageSubjectsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [subjectToEdit, setSubjectToEdit] = useState<Subject | null>(null);
+  const [subjectToDelete, setSubjectToDelete] = useState<Subject | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const fetchSubjects = () => {
     setExistingSubjects(getAllSubjects());
@@ -66,6 +79,25 @@ export default function ManageSubjectsPage() {
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to update subject.", variant: "destructive" });
       return false;
+    }
+  };
+
+  const openDeleteDialog = (subject: Subject) => {
+    setSubjectToDelete(subject);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteSubject = () => {
+    if (!subjectToDelete) return;
+    try {
+      deleteSubject(subjectToDelete.id);
+      toast({ title: "Success", description: `Subject "${subjectToDelete.name}" deleted successfully.` });
+      fetchSubjects();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to delete subject.", variant: "destructive" });
+    } finally {
+      setIsDeleteDialogOpen(false);
+      setSubjectToDelete(null);
     }
   };
 
@@ -122,9 +154,14 @@ export default function ManageSubjectsPage() {
                       <BookOpen className="mr-3 h-5 w-5 text-muted-foreground" />
                       {subject.name}
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => handleEditSubject(subject)}>
-                      <Pencil className="mr-2 h-4 w-4" /> Edit
-                    </Button>
+                    <div className="space-x-2">
+                      <Button variant="outline" size="sm" onClick={() => handleEditSubject(subject)}>
+                        <Pencil className="mr-2 h-4 w-4" /> Edit
+                      </Button>
+                      <Button variant="destructive" size="sm" onClick={() => openDeleteDialog(subject)}>
+                        <Trash2 className="mr-2 h-4 w-4" /> Delete
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -142,6 +179,24 @@ export default function ManageSubjectsPage() {
           subject={subjectToEdit}
           onUpdate={handleUpdateSubject}
         />
+      )}
+      {subjectToDelete && (
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete the subject "{subjectToDelete.name}" and remove it from all classes and students.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setSubjectToDelete(null)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDeleteSubject} className="bg-destructive hover:bg-destructive/90">
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </div>
   );

@@ -17,14 +17,25 @@ const defaultSubjects: Subject[] = [
 const generateRollNumber = (classItem: ClassItem, existingStudentId?: string): string => {
   const classPrefix = classItem.name.replace(/\s+/g, '').toUpperCase();
   const studentRollNumbers = (classItem.students || [])
-    .filter(s => s.id !== existingStudentId) // Exclude current student if updating
+    .filter(s => s.id !== existingStudentId)
     .map(s => s.rollNumber);
-  let nextNumber = 1;
-  while (studentRollNumbers.includes(`${classPrefix}-${String(nextNumber).padStart(3, '0')}`)) {
-    nextNumber++;
-  }
+
+  let maxNumber = 0;
+  studentRollNumbers.forEach(rn => {
+    const parts = rn.split('-');
+    const numStr = parts[parts.length -1]; // Get the last part, assuming format "PREFIX-NUMBER"
+    if (numStr && !isNaN(parseInt(numStr))) {
+      const num = parseInt(numStr);
+      if (num > maxNumber) {
+        maxNumber = num;
+      }
+    }
+  });
+  
+  const nextNumber = maxNumber + 1;
   return `${classPrefix}-${String(nextNumber).padStart(3, '0')}`;
 };
+
 
 const generateDefaultStudents = (classItem: ClassItem, count: number): Student[] => {
   const students: Student[] = [];
@@ -108,13 +119,15 @@ const loadAppData = (): AppData => {
         }));
 
         parsedData.classes.forEach(cls => {
+          const tempClassForRollGen = { ...cls, students: [] as Student[] }; // For accurate roll number generation
           cls.students.forEach(s => {
             if (!s.subjectIds) {
               s.subjectIds = [...cls.subjectIds];
             }
-            if (!s.rollNumber || s.rollNumber.startsWith("ROLL-")) { // Added check for old roll numbers
-              s.rollNumber = generateRollNumber(cls, s.id); 
+            if (!s.rollNumber || !s.rollNumber.startsWith(cls.name.replace(/\s+/g, '').toUpperCase() + "-")) { 
+              s.rollNumber = generateRollNumber(tempClassForRollGen, s.id); 
             }
+            tempClassForRollGen.students.push(s); // Add student to temp class for next roll no generation
           });
         });
         return parsedData;
@@ -178,6 +191,24 @@ export const updateSubject = (subjectId: string, newName: string): Subject | nul
     return appData.subjects[subjectIndex];
 };
 
+export const deleteSubject = (subjectId: string): void => {
+    const subjectIndex = appData.subjects.findIndex(s => s.id === subjectId);
+    if (subjectIndex === -1) {
+        throw new Error("Subject not found for deletion.");
+    }
+    appData.subjects.splice(subjectIndex, 1);
+
+    // Remove references from classes and students
+    appData.classes.forEach(cls => {
+        cls.subjectIds = cls.subjectIds.filter(id => id !== subjectId);
+        cls.students.forEach(student => {
+            student.subjectIds = student.subjectIds.filter(id => id !== subjectId);
+        });
+    });
+
+    saveAppData(appData);
+};
+
 
 // --- Class Management ---
 export const getAllClasses = (): ClassItem[] => {
@@ -211,41 +242,54 @@ export const updateClass = (classId: string, newName: string, newSubjectIds: str
     if (classIndex === -1) {
         throw new Error("Class not found.");
     }
-    const existingClass = appData.classes.find(c => c.name.toLowerCase() === trimmedNewName.toLowerCase() && c.id !== classId);
-    if (existingClass) {
+    const existingClassWithSameName = appData.classes.find(c => c.name.toLowerCase() === trimmedNewName.toLowerCase() && c.id !== classId);
+    if (existingClassWithSameName) {
         throw new Error(`Class name "${trimmedNewName}" already exists.`);
     }
 
-    const oldClassName = appData.classes[classIndex].name;
-    appData.classes[classIndex].name = trimmedNewName;
-    appData.classes[classIndex].subjectIds = newSubjectIds;
+    const oldClass = { ...appData.classes[classIndex] }; // For comparison
+    const classToUpdate = appData.classes[classIndex];
+    
+    classToUpdate.name = trimmedNewName;
+    classToUpdate.subjectIds = newSubjectIds;
 
-    // If class name changed, update student roll numbers and subject IDs if necessary
-    if (oldClassName !== trimmedNewName) {
-        appData.classes[classIndex].students.forEach(student => {
-            student.rollNumber = generateRollNumber(appData.classes[classIndex], student.id);
+    // If class name changed, update student roll numbers
+    if (oldClass.name !== trimmedNewName) {
+        const tempClassForRollGen = { ...classToUpdate, students: [] as Student[] };
+        classToUpdate.students.forEach(student => {
+            student.rollNumber = generateRollNumber(tempClassForRollGen, student.id);
+            tempClassForRollGen.students.push(student);
         });
     }
     // Ensure students only have subjects that are part of the updated class subjects
-    appData.classes[classIndex].students.forEach(student => {
+    classToUpdate.students.forEach(student => {
         student.subjectIds = student.subjectIds.filter(subId => newSubjectIds.includes(subId));
     });
 
 
     saveAppData(appData);
-    return appData.classes[classIndex];
+    return classToUpdate;
+};
+
+export const deleteClass = (classId: string): void => {
+    const classIndex = appData.classes.findIndex(c => c.id === classId);
+    if (classIndex === -1) {
+        throw new Error("Class not found for deletion.");
+    }
+    appData.classes.splice(classIndex, 1);
+    saveAppData(appData);
 };
 
 
 // --- Student Management ---
 export const getStudentsByClass = (classId: string): Student[] => {
   const classItem = getClassById(classId);
-  return classItem ? [...classItem.students] : [];
+  return classItem ? [...(classItem.students || [])] : [];
 };
 
 export const getStudentsForSubjectInClass = (classId: string, subjectId: string): Student[] => {
   const classItem = getClassById(classId);
-  if (!classItem) return [];
+  if (!classItem || !classItem.students) return [];
   return classItem.students.filter(student => student.subjectIds && student.subjectIds.includes(subjectId));
 };
 
@@ -253,7 +297,7 @@ export const addStudent = (
   classId: string,
   studentData: Omit<Student, 'id' | 'classId' | 'photoUrl' | 'subjectIds' | 'rollNumber'> & { photoUrl?: string; studentSubjectIds: string[] }
 ): Student | null => {
-  const classItem = getClassById(classId);
+  const classItem = appData.classes.find(c => c.id === classId);
   if (!classItem) { 
       throw new Error("Class not found for adding student.");
   }
@@ -299,11 +343,10 @@ export const updateStudent = (
     if (updateData.name) {
         studentToUpdate.name = updateData.name.trim();
     }
-    if (updateData.photoUrl) {
+    if (updateData.photoUrl !== undefined) { // Check for undefined to allow setting photoUrl to null (remove photo)
         studentToUpdate.photoUrl = updateData.photoUrl;
     }
     if (updateData.studentSubjectIds) {
-        // Ensure provided subject IDs are valid for the class
         const validStudentSubjects = updateData.studentSubjectIds.filter(id => classItem.subjectIds.includes(id));
         studentToUpdate.subjectIds = validStudentSubjects;
     }
@@ -311,6 +354,19 @@ export const updateStudent = (
     classItem.students[studentIndex] = studentToUpdate;
     saveAppData(appData);
     return studentToUpdate;
+};
+
+export const deleteStudent = (classId: string, studentId: string): void => {
+    const classItem = appData.classes.find(c => c.id === classId);
+    if (!classItem || !classItem.students) {
+        throw new Error("Class or student list not found for deleting student.");
+    }
+    const studentIndex = classItem.students.findIndex(s => s.id === studentId);
+    if (studentIndex === -1) {
+        throw new Error("Student not found for deletion.");
+    }
+    classItem.students.splice(studentIndex, 1);
+    saveAppData(appData);
 };
 
 

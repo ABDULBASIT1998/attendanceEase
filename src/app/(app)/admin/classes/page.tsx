@@ -10,9 +10,19 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import type { Subject, ClassItem } from '@/types';
-import { addClass, getAllSubjects, getAllClasses, updateClass } from '@/lib/mock-data';
-import { PlusCircle, Users, Book, ArrowLeft, Pencil } from 'lucide-react';
+import { addClass, getAllSubjects, getAllClasses, updateClass, deleteClass } from '@/lib/mock-data';
+import { PlusCircle, Users, Book, ArrowLeft, Pencil, Trash2 } from 'lucide-react';
 import { EditClassModal } from '@/components/admin/EditClassModal';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function ManageClassesPage() {
   const router = useRouter();
@@ -24,6 +34,8 @@ export default function ManageClassesPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [classToEdit, setClassToEdit] = useState<ClassItem | null>(null);
+  const [classToDelete, setClassToDelete] = useState<ClassItem | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const fetchClassesAndSubjects = () => {
     setAllGlobalSubjects(getAllSubjects());
@@ -47,7 +59,7 @@ export default function ManageClassesPage() {
       toast({ title: "Error", description: "Class name cannot be empty.", variant: "destructive" });
       return;
     }
-    if (selectedSubjectIdsForNewClass.length === 0) {
+    if (selectedSubjectIdsForNewClass.length === 0 && allGlobalSubjects.length > 0) {
       toast({ title: "Error", description: "Please select at least one subject for the class.", variant: "destructive" });
       return;
     }
@@ -81,6 +93,25 @@ export default function ManageClassesPage() {
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to update class.", variant: "destructive" });
       return false;
+    }
+  };
+
+  const openDeleteDialog = (classItem: ClassItem) => {
+    setClassToDelete(classItem);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteClass = () => {
+    if (!classToDelete) return;
+    try {
+      deleteClass(classToDelete.id);
+      toast({ title: "Success", description: `Class "${classToDelete.name}" and its students deleted successfully.` });
+      fetchClassesAndSubjects();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to delete class.", variant: "destructive" });
+    } finally {
+      setIsDeleteDialogOpen(false);
+      setClassToDelete(null);
     }
   };
 
@@ -168,9 +199,14 @@ export default function ManageClassesPage() {
                             Students: {cls.students.length}
                             </p>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => handleEditClass(cls)}>
-                            <Pencil className="mr-2 h-4 w-4" /> Edit
-                        </Button>
+                        <div className="space-x-2">
+                            <Button variant="outline" size="sm" onClick={() => handleEditClass(cls)}>
+                                <Pencil className="mr-2 h-4 w-4" /> Edit
+                            </Button>
+                             <Button variant="destructive" size="sm" onClick={() => openDeleteDialog(cls)}>
+                                <Trash2 className="mr-2 h-4 w-4" /> Delete
+                            </Button>
+                        </div>
                     </div>
                   </li>
                 ))}
@@ -190,6 +226,24 @@ export default function ManageClassesPage() {
           allSubjects={allGlobalSubjects}
           onUpdate={handleUpdateClass}
         />
+      )}
+      {classToDelete && (
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete the class "{classToDelete.name}" and all its {classToDelete.students.length} student(s).
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setClassToDelete(null)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDeleteClass} className="bg-destructive hover:bg-destructive/90">
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </div>
   );
