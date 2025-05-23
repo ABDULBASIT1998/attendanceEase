@@ -23,7 +23,8 @@
 
 /.vscode
 
-/.modified
+
+.modified
 
 # production
 /build
