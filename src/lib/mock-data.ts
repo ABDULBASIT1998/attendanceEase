@@ -14,67 +14,107 @@ const defaultSubjects: Subject[] = [
   { id: 'subj-cs', name: 'Computer Science' },
 ];
 
-const generateDefaultStudents = (classId: string, classPrefix: string, count: number, classSubjectIds: string[]): Student[] => {
-  return Array.from({ length: count }, (_, i) => ({
-    id: `${classId}-student-${i + 1}`,
-    name: `${classPrefix} Student ${i + 1}`,
-    rollNumber: `${classPrefix.toUpperCase()}${1001 + i}`,
-    photoUrl: `https://placehold.co/100x100.png`,
-    classId: classId,
-    subjectIds: [...classSubjectIds], // By default, enroll students in all class subjects
-  }));
+const generateRollNumber = (classItem: ClassItem): string => {
+  const classPrefix = classItem.name.replace(/\s+/g, '').toUpperCase();
+  const existingRollNumbers = classItem.students.map(s => s.rollNumber);
+  let nextNumber = 1;
+  while (existingRollNumbers.includes(`${classPrefix}-${String(nextNumber).padStart(3, '0')}`)) {
+    nextNumber++;
+  }
+  return `${classPrefix}-${String(nextNumber).padStart(3, '0')}`;
 };
 
-const defaultClasses: ClassItem[] = [
-  {
-    id: 'class-10a',
-    name: 'Class 10A',
-    subjectIds: ['subj-math', 'subj-sci', 'subj-eng', 'subj-hist'],
-    students: generateDefaultStudents('class-10a', '10A', 25, ['subj-math', 'subj-sci', 'subj-eng', 'subj-hist']),
-  },
-  {
-    id: 'class-10b',
-    name: 'Class 10B',
-    subjectIds: ['subj-math', 'subj-sci', 'subj-eng', 'subj-hist'],
-    students: generateDefaultStudents('class-10b', '10B', 22, ['subj-math', 'subj-sci', 'subj-eng', 'subj-hist']),
-  },
-  {
-    id: 'class-11a',
-    name: 'Class 11A',
-    subjectIds: ['subj-math', 'subj-sci', 'subj-eng', 'subj-phy', 'subj-chem'],
-    students: generateDefaultStudents('class-11a', '11A', 30, ['subj-math', 'subj-sci', 'subj-eng', 'subj-phy', 'subj-chem']),
-  },
-  {
-    id: 'class-11b',
-    name: 'Class 11B',
-    subjectIds: ['subj-math', 'subj-sci', 'subj-eng', 'subj-bio', 'subj-cs'],
-    students: generateDefaultStudents('class-11b', '11B', 28, ['subj-math', 'subj-sci', 'subj-eng', 'subj-bio', 'subj-cs']),
-  },
-];
+const generateDefaultStudents = (classItem: ClassItem, count: number): Student[] => {
+  const students: Student[] = [];
+  for (let i = 0; i < count; i++) {
+    const studentName = `${classItem.name.replace('Class ', '')} Student ${i + 1}`;
+    const studentId = `${classItem.id}-student-${i + 1}`;
+    // For default students, assign them all subjects of the class
+    const studentSubjectIds = [...classItem.subjectIds]; 
+    
+    // Generate roll number for this new student based on current class students (which is empty at this point for this loop)
+    // So, we need a temporary way to simulate roll number generation for defaults
+    const classPrefix = classItem.name.replace(/\s+/g, '').toUpperCase();
+    const rollNumber = `${classPrefix}-${String(i + 1).padStart(3, '0')}`;
 
-const getDefaultAppData = (): AppData => ({
-  subjects: [...defaultSubjects],
-  classes: [...defaultClasses],
-});
+    students.push({
+      id: studentId,
+      name: studentName,
+      rollNumber: rollNumber,
+      photoUrl: `https://placehold.co/100x100.png`,
+      classId: classItem.id,
+      subjectIds: studentSubjectIds,
+    });
+  }
+  return students;
+};
+
+
+const getDefaultAppData = (): AppData => {
+  const classes: ClassItem[] = [
+    {
+      id: 'class-10a',
+      name: 'Class 10A',
+      subjectIds: ['subj-math', 'subj-sci', 'subj-eng', 'subj-hist'],
+      students: [], // Will be populated by generateDefaultStudents
+    },
+    {
+      id: 'class-10b',
+      name: 'Class 10B',
+      subjectIds: ['subj-math', 'subj-sci', 'subj-eng', 'subj-hist'],
+      students: [],
+    },
+    {
+      id: 'class-11a',
+      name: 'Class 11A',
+      subjectIds: ['subj-math', 'subj-sci', 'subj-eng', 'subj-phy', 'subj-chem'],
+      students: [],
+    },
+    {
+      id: 'class-11b',
+      name: 'Class 11B',
+      subjectIds: ['subj-math', 'subj-sci', 'subj-eng', 'subj-bio', 'subj-cs'],
+      students: [],
+    },
+  ];
+
+  classes.forEach(cls => {
+    let count = 20; // Default count
+    if(cls.id === 'class-10a') count = 25;
+    if(cls.id === 'class-10b') count = 22;
+    if(cls.id === 'class-11a') count = 30;
+    if(cls.id === 'class-11b') count = 28;
+    cls.students = generateDefaultStudents(cls, count);
+  });
+
+  return {
+    subjects: [...defaultSubjects],
+    classes: classes,
+  };
+};
+
 
 const loadAppData = (): AppData => {
   if (typeof window !== 'undefined') {
     const storedData = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (storedData) {
       try {
-        // Basic validation/migration could be added here if structure changes
         const parsedData = JSON.parse(storedData) as AppData;
-        // Ensure students have subjectIds
         parsedData.classes.forEach(cls => {
           cls.students.forEach(s => {
             if (!s.subjectIds) {
-              s.subjectIds = [...cls.subjectIds]; // Default to all class subjects if missing
+              s.subjectIds = [...cls.subjectIds];
+            }
+            if (!s.rollNumber) { // Backfill roll numbers if missing
+              s.rollNumber = generateRollNumber(cls); // This might create duplicates if run multiple times on old data, best for new setup
             }
           });
         });
         return parsedData;
       } catch (error) {
         console.error("Error parsing AppData from localStorage", error);
+        // If parsing fails, fall back to default, which might overwrite user data.
+        // Consider a backup/recovery strategy in a real app.
       }
     }
   }
@@ -88,6 +128,7 @@ const saveAppData = (data: AppData) => {
 };
 
 let appData: AppData = loadAppData();
+// Save once on initial load if it wasn't already there or if loaded from defaults
 if (typeof window !== 'undefined' && !localStorage.getItem(LOCAL_STORAGE_KEY)) {
   saveAppData(appData);
 }
@@ -126,7 +167,7 @@ export const addClass = (name: string, subjectIds: string[]): ClassItem => {
     id: `class-${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
     name,
     subjectIds,
-    students: [], // New classes start with no students
+    students: [], 
   };
   appData.classes.push(newClass);
   saveAppData(appData);
@@ -134,13 +175,11 @@ export const addClass = (name: string, subjectIds: string[]): ClassItem => {
 };
 
 // --- Student Management ---
-// Gets ALL students in a class, regardless of their subject enrollment.
 export const getStudentsByClass = (classId: string): Student[] => {
   const classItem = getClassById(classId);
   return classItem ? [...classItem.students] : [];
 };
 
-// Gets students from a specific class who are enrolled in a specific subject.
 export const getStudentsForSubjectInClass = (classId: string, subjectId: string): Student[] => {
   const classItem = getClassById(classId);
   if (!classItem) return [];
@@ -149,18 +188,19 @@ export const getStudentsForSubjectInClass = (classId: string, subjectId: string)
 
 export const addStudent = (
   classId: string,
-  studentData: Omit<Student, 'id' | 'classId' | 'photoUrl' | 'subjectIds'> & { photoUrl?: string; studentSubjectIds: string[] }
+  studentData: Omit<Student, 'id' | 'classId' | 'photoUrl' | 'subjectIds' | 'rollNumber'> & { photoUrl?: string; studentSubjectIds: string[] }
 ): Student | null => {
   const classItem = getClassById(classId);
   if (!classItem) return null;
 
-  // Validate that studentSubjectIds are part of the class's subjects
   const classSubjects = classItem.subjectIds;
   const validStudentSubjects = studentData.studentSubjectIds.filter(id => classSubjects.includes(id));
+  
+  const rollNumber = generateRollNumber(classItem);
 
   const newStudent: Student = {
     name: studentData.name,
-    rollNumber: studentData.rollNumber,
+    rollNumber: rollNumber,
     id: `student-${studentData.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
     classId,
     photoUrl: studentData.photoUrl || `https://placehold.co/100x100.png`,
@@ -171,7 +211,6 @@ export const addStudent = (
   return newStudent;
 };
 
-// Utility to get subjects taught in a class
 export const getSubjectsForClass = (classId: string): Subject[] => {
   const classItem = getClassById(classId);
   if (!classItem) return [];

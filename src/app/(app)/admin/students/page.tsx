@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,15 +12,18 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import type { ClassItem, Student, Subject } from '@/types';
 import { addStudent, getAllClasses, getStudentsByClass, getSubjectsForClass, getAllSubjects as getAllGlobalSubjects } from '@/lib/mock-data';
-import { UserPlus, Users, ArrowLeft, ListChecks, BookOpen } from 'lucide-react';
+import { UserPlus, Users, ArrowLeft, ListChecks, BookOpen, Upload, Image as ImageIcon } from 'lucide-react';
 import Image from 'next/image';
 
 export default function ManageStudentsPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [studentName, setStudentName] = useState('');
-  const [rollNumber, setRollNumber] = useState('');
-  const [photoUrl, setPhotoUrl] = useState('');
+  // const [rollNumber, setRollNumber] = useState(''); // Roll number is now auto-generated
+  const [selectedPhotoFile, setSelectedPhotoFile] = useState<File | null>(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [availableClassSubjects, setAvailableClassSubjects] = useState<Subject[]>([]);
   const [selectedStudentSubjectIds, setSelectedStudentSubjectIds] = useState<string[]>([]);
@@ -29,7 +32,6 @@ export default function ManageStudentsPage() {
   const [studentsInSelectedClass, setStudentsInSelectedClass] = useState<Student[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [allGlobalSubjects, setAllGlobalSubjects] = useState<Subject[]>([]);
-
 
   useEffect(() => {
     setAllClasses(getAllClasses());
@@ -41,7 +43,7 @@ export default function ManageStudentsPage() {
       setStudentsInSelectedClass(getStudentsByClass(selectedClassId));
       const subjectsForClass = getSubjectsForClass(selectedClassId);
       setAvailableClassSubjects(subjectsForClass);
-      setSelectedStudentSubjectIds([]); // Reset student subjects when class changes
+      setSelectedStudentSubjectIds([]); 
     } else {
       setStudentsInSelectedClass([]);
       setAvailableClassSubjects([]);
@@ -55,10 +57,25 @@ export default function ManageStudentsPage() {
     );
   };
 
+  const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setSelectedPhotoFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhotoPreviewUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setSelectedPhotoFile(null);
+      setPhotoPreviewUrl(null);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!studentName.trim() || !rollNumber.trim()) {
-      toast({ title: "Error", description: "Student name and roll number are required.", variant: "destructive" });
+    if (!studentName.trim()) {
+      toast({ title: "Error", description: "Student name is required.", variant: "destructive" });
       return;
     }
     if (!selectedClassId) {
@@ -71,19 +88,24 @@ export default function ManageStudentsPage() {
     }
     setIsLoading(true);
     try {
+      // PhotoURL will be a placeholder for now as we are not storing images
+      const placeholderPhotoUrl = `https://placehold.co/100x100.png`;
+      
       addStudent(selectedClassId, { 
         name: studentName, 
-        rollNumber, 
-        photoUrl: photoUrl || undefined,
+        // rollNumber, // No longer manually entered
+        photoUrl: placeholderPhotoUrl, // Using placeholder
         studentSubjectIds: selectedStudentSubjectIds 
       });
       toast({ title: "Success", description: `Student "${studentName}" added to class.` });
       setStudentName('');
-      setRollNumber('');
-      setPhotoUrl('');
+      // setRollNumber('');
+      setSelectedPhotoFile(null);
+      setPhotoPreviewUrl(null);
+      if(fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
       setSelectedStudentSubjectIds([]);
       if (selectedClassId) {
-        setStudentsInSelectedClass(getStudentsByClass(selectedClassId));
+        setStudentsInSelectedClass(getStudentsByClass(selectedClassId)); // Refresh student list
       }
     } catch (error) {
       toast({ title: "Error", description: "Failed to add student.", variant: "destructive" });
@@ -108,7 +130,7 @@ export default function ManageStudentsPage() {
             <CardTitle className="text-2xl flex items-center">
               <UserPlus className="mr-2 h-6 w-6 text-primary" /> Add New Student
             </CardTitle>
-            <CardDescription>Enter student details, assign to a class, and select their subjects.</CardDescription>
+            <CardDescription>Enter student details, assign to a class, and select their subjects. Roll number is auto-generated.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -124,29 +146,34 @@ export default function ManageStudentsPage() {
                   className="text-base py-3"
                 />
               </div>
+              
+              {/* Removed Roll Number Input */}
+
               <div className="space-y-2">
-                <Label htmlFor="rollNumber" className="text-lg">Roll Number</Label>
-                <Input
-                  id="rollNumber"
-                  type="text"
-                  placeholder="e.g., 10A001"
-                  value={rollNumber}
-                  onChange={(e) => setRollNumber(e.target.value)}
-                  required
-                  className="text-base py-3"
-                />
+                <Label htmlFor="photo" className="text-lg">Student Photo</Label>
+                <div className="flex items-center space-x-4">
+                  {photoPreviewUrl ? (
+                    <Image src={photoPreviewUrl} alt="Student preview" width={80} height={80} className="rounded-md object-cover border" data-ai-hint="student photo preview" />
+                  ) : (
+                    <div className="w-20 h-20 rounded-md bg-muted flex items-center justify-center border">
+                      <ImageIcon className="w-10 h-10 text-muted-foreground" />
+                    </div>
+                  )}
+                  <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                    <Upload className="mr-2 h-4 w-4" /> {selectedPhotoFile ? "Change Photo" : "Upload Photo"}
+                  </Button>
+                  <Input
+                    id="photo"
+                    type="file"
+                    accept="image/*"
+                    ref={fileInputRef}
+                    onChange={handlePhotoChange}
+                    className="hidden" 
+                  />
+                </div>
+                 <p className="text-xs text-muted-foreground mt-1">Simulated upload. Image is for preview only.</p>
               </div>
-               <div className="space-y-2">
-                <Label htmlFor="photoUrl" className="text-lg">Photo URL (Optional)</Label>
-                <Input
-                  id="photoUrl"
-                  type="url"
-                  placeholder="https://placehold.co/100x100.png"
-                  value={photoUrl}
-                  onChange={(e) => setPhotoUrl(e.target.value)}
-                  className="text-base py-3"
-                />
-              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="class-select" className="text-lg flex items-center">
                   <Users className="mr-2 h-5 w-5 text-muted-foreground" /> Assign to Class
@@ -198,7 +225,6 @@ export default function ManageStudentsPage() {
                  <p className="text-sm text-muted-foreground">The selected class has no subjects assigned. Please <Button variant="link" onClick={() => router.push('/admin/classes')} className="p-0 h-auto">assign subjects to the class</Button> first.</p>
               )}
 
-
               <Button type="submit" className="w-full text-lg py-3" disabled={isLoading || allClasses.length === 0 || (selectedClassId && availableClassSubjects.length === 0)}>
                 {isLoading ? 'Adding Student...' : 'Add Student'}
               </Button>
@@ -230,7 +256,7 @@ export default function ManageStudentsPage() {
                         alt={student.name}
                         width={40}
                         height={40}
-                        className="rounded-full object-cover"
+                        className="rounded-full object-cover border"
                         data-ai-hint="student avatar"
                         />
                         <div>
