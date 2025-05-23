@@ -16,9 +16,11 @@ const defaultSubjects: Subject[] = [
 
 const generateRollNumber = (classItem: ClassItem): string => {
   const classPrefix = classItem.name.replace(/\s+/g, '').toUpperCase();
-  const existingRollNumbers = classItem.students.map(s => s.rollNumber);
+  // Ensure students array exists
+  const studentRollNumbers = (classItem.students || []).map(s => s.rollNumber);
   let nextNumber = 1;
-  while (existingRollNumbers.includes(`${classPrefix}-${String(nextNumber).padStart(3, '0')}`)) {
+  // Check against existing roll numbers in the specific class
+  while (studentRollNumbers.includes(`${classPrefix}-${String(nextNumber).padStart(3, '0')}`)) {
     nextNumber++;
   }
   return `${classPrefix}-${String(nextNumber).padStart(3, '0')}`;
@@ -26,25 +28,25 @@ const generateRollNumber = (classItem: ClassItem): string => {
 
 const generateDefaultStudents = (classItem: ClassItem, count: number): Student[] => {
   const students: Student[] = [];
+  const tempClassItemForRollNumber = { ...classItem, students: [] as Student[] }; // Simulate empty students for initial generation
+
   for (let i = 0; i < count; i++) {
     const studentName = `${classItem.name.replace('Class ', '')} Student ${i + 1}`;
     const studentId = `${classItem.id}-student-${i + 1}`;
-    // For default students, assign them all subjects of the class
     const studentSubjectIds = [...classItem.subjectIds]; 
     
-    // Generate roll number for this new student based on current class students (which is empty at this point for this loop)
-    // So, we need a temporary way to simulate roll number generation for defaults
-    const classPrefix = classItem.name.replace(/\s+/g, '').toUpperCase();
-    const rollNumber = `${classPrefix}-${String(i + 1).padStart(3, '0')}`;
-
-    students.push({
+    const rollNumber = generateRollNumber(tempClassItemForRollNumber); // Pass temp item
+    
+    const newStudent: Student = {
       id: studentId,
       name: studentName,
       rollNumber: rollNumber,
       photoUrl: `https://placehold.co/100x100.png`,
       classId: classItem.id,
       subjectIds: studentSubjectIds,
-    });
+    };
+    students.push(newStudent);
+    tempClassItemForRollNumber.students.push(newStudent); // Add to temp item for next roll number
   }
   return students;
 };
@@ -56,7 +58,7 @@ const getDefaultAppData = (): AppData => {
       id: 'class-10a',
       name: 'Class 10A',
       subjectIds: ['subj-math', 'subj-sci', 'subj-eng', 'subj-hist'],
-      students: [], // Will be populated by generateDefaultStudents
+      students: [], 
     },
     {
       id: 'class-10b',
@@ -79,7 +81,7 @@ const getDefaultAppData = (): AppData => {
   ];
 
   classes.forEach(cls => {
-    let count = 20; // Default count
+    let count = 20; 
     if(cls.id === 'class-10a') count = 25;
     if(cls.id === 'class-10b') count = 22;
     if(cls.id === 'class-11a') count = 30;
@@ -100,21 +102,25 @@ const loadAppData = (): AppData => {
     if (storedData) {
       try {
         const parsedData = JSON.parse(storedData) as AppData;
+        // Ensure all classes have a students array
+        parsedData.classes = parsedData.classes.map(cls => ({
+          ...cls,
+          students: cls.students || [] 
+        }));
+
         parsedData.classes.forEach(cls => {
           cls.students.forEach(s => {
             if (!s.subjectIds) {
               s.subjectIds = [...cls.subjectIds];
             }
-            if (!s.rollNumber) { // Backfill roll numbers if missing
-              s.rollNumber = generateRollNumber(cls); // This might create duplicates if run multiple times on old data, best for new setup
+            if (!s.rollNumber) { 
+              s.rollNumber = generateRollNumber(cls); 
             }
           });
         });
         return parsedData;
       } catch (error) {
         console.error("Error parsing AppData from localStorage", error);
-        // If parsing fails, fall back to default, which might overwrite user data.
-        // Consider a backup/recovery strategy in a real app.
       }
     }
   }
@@ -128,7 +134,7 @@ const saveAppData = (data: AppData) => {
 };
 
 let appData: AppData = loadAppData();
-// Save once on initial load if it wasn't already there or if loaded from defaults
+
 if (typeof window !== 'undefined' && !localStorage.getItem(LOCAL_STORAGE_KEY)) {
   saveAppData(appData);
 }
@@ -144,9 +150,13 @@ export const getSubjectById = (subjectId: string): Subject | undefined => {
 };
 
 export const addSubject = (name: string): Subject => {
+  const existingSubject = appData.subjects.find(s => s.name.toLowerCase() === name.toLowerCase().trim());
+  if (existingSubject) {
+    throw new Error(`Subject "${name}" already exists.`);
+  }
   const newSubject: Subject = {
     id: `subj-${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
-    name,
+    name: name.trim(),
   };
   appData.subjects.push(newSubject);
   saveAppData(appData);
@@ -163,9 +173,14 @@ export const getClassById = (classId: string): ClassItem | undefined => {
 };
 
 export const addClass = (name: string, subjectIds: string[]): ClassItem => {
+  const trimmedName = name.trim();
+  const existingClass = appData.classes.find(c => c.name.toLowerCase() === trimmedName.toLowerCase());
+  if (existingClass) {
+    throw new Error(`Class "${trimmedName}" already exists.`);
+  }
   const newClass: ClassItem = {
-    id: `class-${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
-    name,
+    id: `class-${trimmedName.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
+    name: trimmedName,
     subjectIds,
     students: [], 
   };
@@ -183,7 +198,8 @@ export const getStudentsByClass = (classId: string): Student[] => {
 export const getStudentsForSubjectInClass = (classId: string, subjectId: string): Student[] => {
   const classItem = getClassById(classId);
   if (!classItem) return [];
-  return classItem.students.filter(student => student.subjectIds.includes(subjectId));
+  // Ensure students have subjectIds before filtering
+  return classItem.students.filter(student => student.subjectIds && student.subjectIds.includes(subjectId));
 };
 
 export const addStudent = (
@@ -199,15 +215,15 @@ export const addStudent = (
   const rollNumber = generateRollNumber(classItem);
 
   const newStudent: Student = {
-    name: studentData.name,
+    name: studentData.name.trim(),
     rollNumber: rollNumber,
     id: `student-${studentData.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
     classId,
     photoUrl: studentData.photoUrl || `https://placehold.co/100x100.png`,
     subjectIds: validStudentSubjects,
   };
-  classItem.students.push(newStudent);
-  saveAppData(appData);
+  classItem.students.push(newStudent); // This mutates appData.classes indirectly
+  saveAppData(appData); // Save the entire appData
   return newStudent;
 };
 

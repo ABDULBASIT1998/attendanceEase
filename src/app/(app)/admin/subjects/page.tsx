@@ -25,18 +25,19 @@ export default function ManageSubjectsPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!subjectName.trim()) {
+    const trimmedSubjectName = subjectName.trim();
+    if (!trimmedSubjectName) {
       toast({ title: "Error", description: "Subject name cannot be empty.", variant: "destructive" });
       return;
     }
     setIsLoading(true);
     try {
-      addSubject(subjectName);
-      toast({ title: "Success", description: `Subject "${subjectName}" added successfully.` });
+      addSubject(trimmedSubjectName);
+      toast({ title: "Success", description: `Subject "${trimmedSubjectName}" added successfully.` });
       setSubjectName('');
       setExistingSubjects(getAllSubjects()); // Refresh the list
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to add subject.", variant: "destructive" });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to add subject. Please try again.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -54,7 +55,7 @@ export default function ManageSubjectsPage() {
             <CardTitle className="text-2xl flex items-center">
               <PlusCircle className="mr-2 h-6 w-6 text-primary" /> Add New Subject
             </CardTitle>
-            <CardDescription>Add a new subject to the global list.</CardDescription>
+            <CardDescription>Add a new subject to the global list. Subject names must be unique.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -103,3 +104,4 @@ export default function ManageSubjectsPage() {
     </div>
   );
 }
+

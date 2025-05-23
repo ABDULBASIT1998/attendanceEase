@@ -35,23 +35,24 @@ export default function ManageClassesPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!className.trim()) {
+    const trimmedClassName = className.trim();
+    if (!trimmedClassName) {
       toast({ title: "Error", description: "Class name cannot be empty.", variant: "destructive" });
       return;
     }
     if (selectedSubjectIds.length === 0) {
-      toast({ title: "Error", description: "Please select at least one subject.", variant: "destructive" });
+      toast({ title: "Error", description: "Please select at least one subject for the class.", variant: "destructive" });
       return;
     }
     setIsLoading(true);
     try {
-      addClass(className, selectedSubjectIds);
-      toast({ title: "Success", description: `Class "${className}" added successfully.` });
+      addClass(trimmedClassName, selectedSubjectIds);
+      toast({ title: "Success", description: `Class "${trimmedClassName}" added successfully.` });
       setClassName('');
       setSelectedSubjectIds([]);
       setExistingClasses(getAllClasses()); // Refresh the list
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to add class.", variant: "destructive" });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to add class. Please try again.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -69,7 +70,7 @@ export default function ManageClassesPage() {
             <CardTitle className="text-2xl flex items-center">
               <PlusCircle className="mr-2 h-6 w-6 text-primary" /> Add New Class
             </CardTitle>
-            <CardDescription>Create a new class and assign subjects to it.</CardDescription>
+            <CardDescription>Create a new class and assign subjects to it. Class names must be unique.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
