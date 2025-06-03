@@ -137,18 +137,18 @@ export default function ManageSubjectsPage() {
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2 shadow-lg">
+        <Card className="lg:col-span-2 shadow-lg flex flex-col">
           <CardHeader>
             <CardTitle className="text-2xl flex items-center">
               <ListChecks className="mr-2 h-6 w-6 text-primary" /> Existing Subjects
             </CardTitle>
             <CardDescription>List of all available subjects ({existingSubjects.length}).</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-1 min-h-0">
             {existingSubjects.length === 0 ? (
               <p className="text-muted-foreground text-center py-4">No subjects found. Add one above!</p>
             ) : (
-              <ScrollArea className="max-h-[calc(100vh-20rem)] pr-2">
+              <ScrollArea className="h-full pr-2">
                 <div className="space-y-3">
                   {existingSubjects.map(subject => (
                     <div key={subject.id} className="p-4 border rounded-lg bg-card/50 flex items-center justify-between hover:shadow-md transition-shadow">
@@ -204,3 +204,4 @@ export default function ManageSubjectsPage() {
     </div>
   );
 }
+
