@@ -7,9 +7,24 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Student, AttendanceRecord, ClassItem, Subject, AttendanceStatus } from '@/types';
-import { getClassById, getSubjectById, getStudentsForSubjectInClass, getStudentsByClass as getAllStudentsInClass } from '@/lib/mock-data'; // Updated import
+import { getClassById, getSubjectById, getStudentsForSubjectInClass, getStudentsByClass as getAllStudentsInClass } from '@/lib/mock-data';
 import { FileSpreadsheet, FileText, Users, Library, CalendarDays, Download, Check, X, AlertTriangle, Edit3 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+
+// Inline SVG for WhatsApp icon
+const WhatsAppIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className="mr-2 h-4 w-4"
+  >
+    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" />
+  </svg>
+);
+
 
 export default function AttendanceSummaryPage() {
   const router = useRouter();
@@ -20,8 +35,8 @@ export default function AttendanceSummaryPage() {
 
   const [currentClass, setCurrentClass] = useState<ClassItem | null>(null);
   const [currentSubject, setCurrentSubject] = useState<Subject | null>(null);
-  const [studentsForSubject, setStudentsForSubject] = useState<Student[]>([]); // Students enrolled in this subject
-  const [allStudentsInClassForLookup, setAllStudentsInClassForLookup] = useState<Student[]>([]); // For name/roll lookup
+  const [studentsForSubject, setStudentsForSubject] = useState<Student[]>([]);
+  const [allStudentsInClassForLookup, setAllStudentsInClassForLookup] = useState<Student[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [currentDate, setCurrentDate] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -37,7 +52,7 @@ export default function AttendanceSummaryPage() {
     const classData = getClassById(classId);
     const subjectData = getSubjectById(subjectId);
     const studentsEnrolled = getStudentsForSubjectInClass(classId, subjectId);
-    const allStudentsInCls = getAllStudentsInClass(classId); // For lookup
+    const allStudentsInCls = getAllStudentsInClass(classId); 
     
     setAllStudentsInClassForLookup(allStudentsInCls);
     
@@ -59,12 +74,9 @@ export default function AttendanceSummaryPage() {
       setStudentsForSubject(studentsEnrolled);
 
       if (studentsEnrolled.length > 0) {
-        // If records are stored, use them, otherwise initialize
         if (storedRecords.length > 0) {
-             // Filter storedRecords to only include students currently enrolled in this subject
             const relevantRecords = storedRecords.filter(rec => studentsEnrolled.some(s => s.id === rec.studentId));
             const studentIdsFromRecords = relevantRecords.map(r => r.studentId);
-            // Add pending records for any enrolled students not in storedRecords
             const newPendingRecords = studentsEnrolled
                 .filter(s => !studentIdsFromRecords.includes(s.id))
                 .map(s => ({ studentId: s.id, status: 'pending' as AttendanceStatus }));
@@ -73,7 +85,7 @@ export default function AttendanceSummaryPage() {
             setAttendanceRecords(studentsEnrolled.map(s => ({ studentId: s.id, status: 'pending' })));
         }
       } else {
-        setAttendanceRecords([]); // No students, no records
+        setAttendanceRecords([]);
       }
       
     } else {
@@ -83,7 +95,7 @@ export default function AttendanceSummaryPage() {
     
     setCurrentDate(today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }));
     setIsLoading(false);
-  }, [classId, subjectId, router, toast]); // localStorageKey is not needed as a dependency here
+  }, [classId, subjectId, router, toast]);
 
   const getStudentDetails = useCallback((studentId: string): { name: string; rollNumber: string } => {
     const student = allStudentsInClassForLookup.find(s => s.id === studentId);
@@ -100,6 +112,38 @@ export default function AttendanceSummaryPage() {
     });
   };
 
+  const handleShareToWhatsApp = () => {
+    if (!currentClass || !currentSubject || attendanceRecords.length === 0) {
+        toast({ title: "Cannot Share", description: "No attendance data available to share.", variant: "destructive"});
+        return;
+    }
+
+    let summaryText = `Attendance Summary\n`;
+    summaryText += `Class: ${currentClass.name}\n`;
+    summaryText += `Subject: ${currentSubject.name}\n`;
+    summaryText += `Date: ${currentDate}\n\n`;
+    summaryText += `Present: ${presentCount}\n`;
+    summaryText += `Absent: ${absentCount}\n\n`;
+    summaryText += `Student Details:\n`;
+
+    attendanceRecords.forEach(record => {
+        const studentInfo = getStudentDetails(record.studentId);
+        if (studentInfo.name !== 'Unknown Student') {
+            summaryText += `- ${studentInfo.name} (${studentInfo.rollNumber}): ${record.status.toUpperCase()}\n`;
+        }
+    });
+
+    const encodedText = encodeURIComponent(summaryText);
+    const whatsappUrl = `https://wa.me/?text=${encodedText}`;
+    
+    window.open(whatsappUrl, '_blank');
+
+    toast({
+      title: "Sharing to WhatsApp",
+      description: "Sharing text summary. PDF generation is a future enhancement.",
+    });
+  };
+
   const handleStatusToggle = useCallback((studentId: string) => {
     setAttendanceRecords(prevRecords => {
       const updatedRecords = prevRecords.map(record => {
@@ -109,7 +153,7 @@ export default function AttendanceSummaryPage() {
         }
         return record;
       });
-      if (localStorageKey) { // Ensure key is set before saving
+      if (localStorageKey) {
         localStorage.setItem(localStorageKey, JSON.stringify(updatedRecords));
       }
       toast({
@@ -175,8 +219,6 @@ export default function AttendanceSummaryPage() {
               <TableBody>
                 {attendanceRecords.map((record) => {
                     const studentInfo = getStudentDetails(record.studentId);
-                    // Only render if studentInfo is valid (student exists in class)
-                    // This check is mostly for robustness, as attendanceRecords should only contain valid students for the subject
                     if(studentInfo.name === 'Unknown Student') return null; 
 
                     return (
@@ -209,14 +251,19 @@ export default function AttendanceSummaryPage() {
             </Table>
           )}
           
-          <div className="mt-8 flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-4">
-            <Button variant="outline" onClick={() => handleExport('excel')} disabled={studentsForSubject.length === 0}>
-              <FileSpreadsheet className="mr-2 h-4 w-4" /> Export to Excel
-            </Button>
-            <Button variant="outline" onClick={() => handleExport('pdf')} disabled={studentsForSubject.length === 0}>
-              <FileText className="mr-2 h-4 w-4" /> Export to PDF
-            </Button>
-             <Button onClick={() => router.push('/dashboard')}>
+          <div className="mt-8 flex flex-col sm:flex-row justify-between items-center space-y-3 sm:space-y-0 sm:space-x-3">
+            <div className="flex flex-col sm:flex-row gap-3">
+                <Button variant="outline" onClick={() => handleExport('excel')} disabled={studentsForSubject.length === 0}>
+                    <FileSpreadsheet className="mr-2 h-4 w-4" /> Export to Excel
+                </Button>
+                <Button variant="outline" onClick={() => handleExport('pdf')} disabled={studentsForSubject.length === 0}>
+                    <FileText className="mr-2 h-4 w-4" /> Export to PDF
+                </Button>
+                <Button variant="outline" onClick={handleShareToWhatsApp} disabled={studentsForSubject.length === 0 || presentCount + absentCount === 0}>
+                    <WhatsAppIcon /> Share to WhatsApp
+                </Button>
+            </div>
+            <Button onClick={() => router.push('/dashboard')} className="w-full sm:w-auto">
               <Download className="mr-2 h-4 w-4" /> New Attendance Session
             </Button>
           </div>
@@ -225,3 +272,4 @@ export default function AttendanceSummaryPage() {
     </div>
   );
 }
+
