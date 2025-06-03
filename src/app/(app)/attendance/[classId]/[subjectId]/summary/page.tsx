@@ -118,18 +118,18 @@ export default function AttendanceSummaryPage() {
         return;
     }
 
-    let summaryText = `Attendance Summary\n`;
-    summaryText += `Class: ${currentClass.name}\n`;
-    summaryText += `Subject: ${currentSubject.name}\n`;
-    summaryText += `Date: ${currentDate}\n\n`;
-    summaryText += `Present: ${presentCount}\n`;
-    summaryText += `Absent: ${absentCount}\n\n`;
-    summaryText += `Student Details:\n`;
+    let summaryText = `*Attendance Summary*\n\n`;
+    summaryText += `*Class:* ${currentClass.name}\n`;
+    summaryText += `*Subject:* ${currentSubject.name}\n`;
+    summaryText += `*Date:* ${currentDate}\n\n`;
+    summaryText += `*Present:* ${presentCount}\n`;
+    summaryText += `*Absent:* ${absentCount}\n\n`;
+    summaryText += `*Student Details:*\n`;
 
     attendanceRecords.forEach(record => {
         const studentInfo = getStudentDetails(record.studentId);
         if (studentInfo.name !== 'Unknown Student') {
-            summaryText += `- ${studentInfo.name} (${studentInfo.rollNumber}): ${record.status.toUpperCase()}\n`;
+            summaryText += `- *${studentInfo.name}* (\`${studentInfo.rollNumber}\`): *${record.status.toUpperCase()}*\n`;
         }
     });
 
