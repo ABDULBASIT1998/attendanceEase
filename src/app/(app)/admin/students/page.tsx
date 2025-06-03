@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import type { ClassItem, Student, Subject } from '@/types';
-import { addStudent, getAllClasses, getStudentsByClass, getSubjectsForClass, getAllSubjects as getAllGlobalSubjects, updateStudent, deleteStudent, addMultipleStudents, BulkUploadResult } from '@/lib/mock-data';
+import { addStudent, getAllClasses, getStudentsByClass, getSubjectsForClass, getAllSubjects as getAllGlobalSubjects, updateStudent, deleteStudent, BulkUploadResult } from '@/lib/mock-data';
 import { UserPlus, Users, ArrowLeft, ListChecks, BookOpen, Upload, Image as ImageIcon, Pencil, Trash2, FileUp } from 'lucide-react';
 import Image from 'next/image';
 import { EditStudentModal } from '@/components/admin/EditStudentModal';
@@ -58,6 +58,10 @@ export default function ManageStudentsPage() {
   const fetchAllData = () => {
     setAllClasses(getAllClasses());
     setAllGlobalSubjects(getAllGlobalSubjects());
+    // If a class is selected, refresh its student list
+    if (selectedClassIdForNewStudent) {
+      setStudentsInSelectedClass(getStudentsByClass(selectedClassIdForNewStudent));
+    }
   };
 
   useEffect(() => {
@@ -69,7 +73,7 @@ export default function ManageStudentsPage() {
       setStudentsInSelectedClass(getStudentsByClass(selectedClassIdForNewStudent));
       const subjectsForClass = getSubjectsForClass(selectedClassIdForNewStudent);
       setAvailableClassSubjectsForNewStudent(subjectsForClass);
-      setSelectedStudentSubjectIdsForNewStudent([]); 
+      setSelectedStudentSubjectIdsForNewStudent([]); // Reset subject selection for new student
     } else {
       setStudentsInSelectedClass([]);
       setAvailableClassSubjectsForNewStudent([]);
@@ -108,12 +112,16 @@ export default function ManageStudentsPage() {
       toast({ title: "Error", description: "Please select a class for the student.", variant: "destructive" });
       return;
     }
+    // This check is important: if there are subjects available for the class, at least one must be selected for the student.
+    // If the class has NO subjects assigned to it, then it's fine to add a student without subjects.
     if (selectedStudentSubjectIdsForNewStudent.length === 0 && availableClassSubjectsForNewStudent.length > 0) {
-        toast({ title: "Error", description: "Please select at least one subject for the student.", variant: "destructive" });
+        toast({ title: "Error", description: "Please select at least one subject for the student from the class's available subjects.", variant: "destructive" });
         return;
     }
     setIsLoading(true);
     try {
+      // In a real app, you'd upload selectedPhotoFile here and get a URL.
+      // For mock, we use photoPreviewUrl if it's set (from file selection), otherwise default placeholder.
       const photoUrlForStorage = photoPreviewUrl || `https://placehold.co/100x100.png`;
       
       addStudent(selectedClassIdForNewStudent, { 
@@ -125,7 +133,7 @@ export default function ManageStudentsPage() {
       setStudentName('');
       setSelectedPhotoFile(null);
       setPhotoPreviewUrl(null);
-      if(fileInputRef.current) fileInputRef.current.value = "";
+      if(fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
       setSelectedStudentSubjectIdsForNewStudent([]);
       // Re-fetch students for the currently selected class to show the new student
       if (selectedClassIdForNewStudent) {
@@ -155,29 +163,38 @@ export default function ManageStudentsPage() {
 
   const handleUpdateStudent = (
     studentId: string, 
-    classId: string,
+    classId: string, // Keep classId for context, though not directly editable in this modal
     updatedData: Partial<Omit<Student, 'id' | 'classId' | 'rollNumber'>> & { studentSubjectIds?: string[], photoFile?: File | null, photoUrl?: string | null }
   ) => {
     try {
-        let photoUrlToUpdate = studentToEdit?.photoUrl; 
+        let photoUrlToUpdate = studentToEdit?.photoUrl; // Start with current photo
 
-        if (updatedData.photoFile) { 
+        if (updatedData.photoFile) { // A new file was selected
              // In a real app, upload file here and get URL. For mock:
-             photoUrlToUpdate = URL.createObjectURL(updatedData.photoFile); 
-        } else if (updatedData.photoUrl === null) { 
+             // We'll rely on the component to generate a blob URL for preview,
+             // and mock-data will store this blob URL for the session.
+             // For this mock, let's assume updatedData.photoUrl (if set by modal after file read) is the one to use.
+             // Or, if photoFile is present, we can assume a blob URL was created and passed as photoUrl in updatedData.
+             // The EditStudentModal needs to handle creating this blob URL for preview and passing it.
+             // For simplicity, the mock-data's updateStudent will just take photoUrl.
+             // The modal passes `photoPreviewUrl` as `photoUrl` in `updatePayload`.
+             photoUrlToUpdate = updatedData.photoUrl; 
+        } else if (updatedData.photoUrl === null) { // Photo was explicitly removed
             photoUrlToUpdate = `https://placehold.co/100x100.png`;
-        } else if (updatedData.photoUrl && updatedData.photoUrl !== studentToEdit?.photoUrl) { 
+        } else if (updatedData.photoUrl && updatedData.photoUrl !== studentToEdit?.photoUrl) { // URL changed without a file (e.g., user pasted a URL - not implemented here, but for robustness)
             photoUrlToUpdate = updatedData.photoUrl;
         }
 
+        // Construct the data object for the update function
         const dataForUpdate = { ...updatedData, photoUrl: photoUrlToUpdate };
-        delete dataForUpdate.photoFile; 
+        delete dataForUpdate.photoFile; // Remove the File object before sending to mock-data
 
         updateStudent(studentId, classId, dataForUpdate);
         toast({ title: "Success", description: "Student updated successfully." });
+        // Refresh the student list for the currently selected class in the UI, if any
         if (selectedClassIdForNewStudent) { 
             setStudentsInSelectedClass(getStudentsByClass(selectedClassIdForNewStudent));
-        } else if (classForStudentToEdit) {
+        } else if (classForStudentToEdit) { // If editing was done from a non-selected class context
              setStudentsInSelectedClass(getStudentsByClass(classForStudentToEdit.id));
         }
         setIsEditModalOpen(false);
@@ -200,6 +217,7 @@ export default function ManageStudentsPage() {
     try {
       deleteStudent(studentToDelete.classId, studentToDelete.id);
       toast({ title: "Success", description: `Student "${studentToDelete.name}" deleted.` });
+      // Refresh list for the currently selected class
       if (selectedClassIdForNewStudent) {
         setStudentsInSelectedClass(getStudentsByClass(selectedClassIdForNewStudent));
       }
@@ -228,8 +246,9 @@ export default function ManageStudentsPage() {
         // Log all errors to console for debugging
         console.error("Bulk upload errors:", result.errors);
     }
-    fetchAllData(); // Refresh all data
-    if (selectedClassIdForNewStudent) { // Refresh student list if a class is selected
+    fetchAllData(); // Refresh all data including classes (in case new students make a class appear in selections)
+    // If a class is selected on the page, refresh its student list specifically
+    if (selectedClassIdForNewStudent) {
         setStudentsInSelectedClass(getStudentsByClass(selectedClassIdForNewStudent));
     }
     setIsBulkUploadModalOpen(false);
@@ -243,6 +262,7 @@ export default function ManageStudentsPage() {
       </Button>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Column 1: Add Student and Bulk Upload */}
         <div className="lg:col-span-1 space-y-8">
             <Card className="shadow-lg">
                 <CardHeader>
@@ -258,7 +278,7 @@ export default function ManageStudentsPage() {
                         <Input
                         id="studentName"
                         type="text"
-                        placeholder="e.g., John Doe"
+                        placeholder="e.g., Priya Sharma"
                         value={studentName}
                         onChange={(e) => setStudentName(e.target.value)}
                         required
@@ -272,12 +292,12 @@ export default function ManageStudentsPage() {
                         {photoPreviewUrl ? (
                             <Image src={photoPreviewUrl} alt="Student preview" width={64} height={64} className="rounded-md object-cover border" data-ai-hint="student photo preview" />
                         ) : (
-                            <div className="w-16 h-16 rounded-md bg-muted flex items-center justify-center border">
+                            <div className="w-16 h-16 rounded-md bg-muted flex items-center justify-center border" data-ai-hint="student avatar placeholder">
                             <ImageIcon className="w-8 h-8 text-muted-foreground" />
                             </div>
                         )}
                         <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-                            <Upload className="mr-2 h-4 w-4" /> {selectedPhotoFile ? "Change" : "Upload"}
+                            <Upload className="mr-2 h-4 w-4" /> {selectedPhotoFile ? "Change Photo" : "Upload Photo"}
                         </Button>
                         <Input
                             id="photo"
@@ -339,11 +359,22 @@ export default function ManageStudentsPage() {
                         </ScrollArea>
                         </div>
                     )}
+                    {/* Message if class is selected but has no subjects */}
                     {selectedClassIdForNewStudent && availableClassSubjectsForNewStudent.length === 0 && allGlobalSubjects.length > 0 && (
-                        <p className="text-sm text-muted-foreground">The selected class has no subjects assigned. Please <Button variant="link" onClick={() => router.push('/admin/classes')} className="p-0 h-auto">assign subjects to the class</Button> first.</p>
+                        <p className="text-sm text-muted-foreground">The selected class has no subjects assigned. Please <Button variant="link" onClick={() => router.push('/admin/classes')} className="p-0 h-auto">assign subjects to the class</Button> first. Students can only be assigned subjects that are part of their class.</p>
                     )}
 
-                    <Button type="submit" className="w-full text-base py-3" disabled={isLoading || allClasses.length === 0 || (selectedClassIdForNewStudent && availableClassSubjectsForNewStudent.length === 0 && allGlobalSubjects.length > 0) || !selectedClassIdForNewStudent}>
+                    <Button 
+                        type="submit" 
+                        className="w-full text-base py-3" 
+                        disabled={
+                            isLoading || 
+                            allClasses.length === 0 || 
+                            !selectedClassIdForNewStudent || 
+                            (availableClassSubjectsForNewStudent.length > 0 && selectedStudentSubjectIdsForNewStudent.length === 0)
+                            // Allow adding student if class has NO subjects (they'll just have no subjects)
+                        }
+                    >
                         {isLoading ? 'Adding Student...' : 'Add Student'}
                     </Button>
                     </form>
@@ -365,6 +396,7 @@ export default function ManageStudentsPage() {
         </div>
 
 
+        {/* Column 2: Students in Class List */}
         <Card className="lg:col-span-2 shadow-lg">
           <CardHeader>
             <CardTitle className="text-2xl flex items-center">
@@ -391,7 +423,7 @@ export default function ManageStudentsPage() {
                           width={64}
                           height={64}
                           className="rounded-md object-cover border"
-                          data-ai-hint="student avatar"
+                          data-ai-hint="student avatar indian" // Added specific hint
                         />
                         <div className="flex-grow">
                           <h3 className="font-semibold text-lg">{student.name}</h3>
@@ -432,6 +464,8 @@ export default function ManageStudentsPage() {
             isOpen={isBulkUploadModalOpen}
             onClose={() => setIsBulkUploadModalOpen(false)}
             onUploadComplete={handleBulkUploadComplete}
+            allClasses={allClasses} // Pass allClasses for validation within modal if needed, or rely on mock-data
+            allGlobalSubjects={allGlobalSubjects} // Pass subjects for validation
         />
       )}
 
@@ -445,7 +479,7 @@ export default function ManageStudentsPage() {
           }}
           student={studentToEdit}
           classItem={classForStudentToEdit}
-          allGlobalSubjects={allGlobalSubjects}
+          allGlobalSubjects={allGlobalSubjects} // Used for looking up subject names for display
           onUpdate={handleUpdateStudent}
         />
       )}

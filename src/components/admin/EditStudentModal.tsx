@@ -17,7 +17,7 @@ interface EditStudentModalProps {
   onClose: () => void;
   student: Student;
   classItem: ClassItem; // The class this student belongs to
-  allGlobalSubjects: Subject[]; // All subjects, for name lookup
+  allGlobalSubjects: Subject[]; // All subjects, for name lookup for subjects available in the class
   onUpdate: (
     studentId: string, 
     classId: string, 
@@ -33,6 +33,7 @@ export function EditStudentModal({ isOpen, onClose, student, classItem, allGloba
   const [selectedPhotoFile, setSelectedPhotoFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // Filter allGlobalSubjects to get only those subjects that are actually assigned to classItem
   const subjectsAvailableInClass = allGlobalSubjects.filter(sub => classItem.subjectIds.includes(sub.id));
 
   useEffect(() => {
@@ -41,9 +42,9 @@ export function EditStudentModal({ isOpen, onClose, student, classItem, allGloba
       setSelectedSubjectIds([...student.subjectIds]);
       setPhotoPreviewUrl(student.photoUrl || null);
       setSelectedPhotoFile(null); // Reset file on new student load
-      if(fileInputRef.current) fileInputRef.current.value = "";
+      if(fileInputRef.current) fileInputRef.current.value = ""; // Reset file input visually
     }
-  }, [student]);
+  }, [student, isOpen]); // Also re-run if isOpen changes to ensure reset when modal reopens for same student
 
   const handleSubjectToggle = (subjectId: string) => {
     setSelectedSubjectIds(prev =>
@@ -60,15 +61,12 @@ export function EditStudentModal({ isOpen, onClose, student, classItem, allGloba
         setPhotoPreviewUrl(reader.result as string);
       };
       reader.readAsDataURL(file);
-    } else {
-      // If no file is selected, but there was a preview, don't clear it
-      // unless user explicitly wants to remove photo (future feature)
     }
   };
 
   const handleRemovePhoto = () => {
     setSelectedPhotoFile(null);
-    setPhotoPreviewUrl(null); // This will effectively use placeholder on update
+    setPhotoPreviewUrl(null); // This will effectively use placeholder on update if no new file selected
     if(fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -76,31 +74,38 @@ export function EditStudentModal({ isOpen, onClose, student, classItem, allGloba
     e.preventDefault();
     const trimmedName = name.trim();
     if (!trimmedName) {
-      alert("Student name cannot be empty.");
+      alert("Student name cannot be empty."); // Consider using toast for consistency
       return;
     }
+    // If the class has subjects, student must be enrolled in at least one of them
     if (selectedSubjectIds.length === 0 && subjectsAvailableInClass.length > 0) {
-      alert("Please select at least one subject for the student.");
+      alert("Please select at least one subject for the student from the class's available subjects.");
       return;
     }
 
     setIsLoading(true);
     
-    // photoPreviewUrl will contain the new blob URL if a file was selected,
-    // or the original student.photoUrl, or null if removed
     const updatePayload: Partial<Omit<Student, 'id' | 'classId' | 'rollNumber'>> & { studentSubjectIds?: string[], photoFile?: File | null, photoUrl?: string | null } = {
       name: trimmedName,
       studentSubjectIds: selectedSubjectIds,
     };
 
+    // photoUrl logic:
+    // 1. If a new file is selected, it's used (photoFile will be set).
+    // 2. If no new file, but preview URL is null (photo removed), photoUrl is set to null.
+    // 3. If no new file and preview URL is same as original, nothing changes for photo.
+    // 4. If no new file and preview URL is different (e.g. pasted URL - not implemented), it would be used.
+    
     if (selectedPhotoFile) {
-        updatePayload.photoFile = selectedPhotoFile; // Pass the file for mock-data to handle (e.g. create blob URL)
-    } else if (photoPreviewUrl !== student.photoUrl) {
-        // This case handles if photo was removed (photoPreviewUrl is null)
-        // or if somehow photoUrl was directly manipulated (less likely here)
-        updatePayload.photoUrl = photoPreviewUrl;
+        // For mock data, we pass the blob URL generated for preview as the photoUrl
+        updatePayload.photoUrl = photoPreviewUrl; 
+        // In a real app: updatePayload.photoFile = selectedPhotoFile; and backend handles upload
+    } else if (photoPreviewUrl === null && student.photoUrl !== null) {
+        // Photo was removed by user, and there was an original photo
+        updatePayload.photoUrl = null; // Signal to use placeholder
     }
-    // If photoPreviewUrl is the same as student.photoUrl and no new file, photoUrl is not explicitly sent, so no change
+    // If photoPreviewUrl is same as student.photoUrl and no new file, photoUrl field is not added to payload, so no change.
+
 
     const success = onUpdate(student.id, student.classId, updatePayload);
     if (success) {
@@ -136,18 +141,18 @@ export function EditStudentModal({ isOpen, onClose, student, classItem, allGloba
             <Label htmlFor="edit-photo">Student Photo</Label>
             <div className="flex items-center space-x-4">
               {photoPreviewUrl ? (
-                <Image src={photoPreviewUrl} alt="Student preview" width={80} height={80} className="rounded-md object-cover border" data-ai-hint="student photo preview" />
+                <Image src={photoPreviewUrl} alt="Student preview" width={80} height={80} className="rounded-md object-cover border" data-ai-hint="student photo indian" />
               ) : (
-                <div className="w-20 h-20 rounded-md bg-muted flex items-center justify-center border">
+                <div className="w-20 h-20 rounded-md bg-muted flex items-center justify-center border" data-ai-hint="student avatar placeholder">
                   <ImageIcon className="w-10 h-10 text-muted-foreground" />
                 </div>
               )}
               <div className="flex flex-col space-y-2">
                 <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                  <Upload className="mr-2 h-4 w-4" /> {selectedPhotoFile ? "Change" : "Upload Photo"}
+                  <Upload className="mr-2 h-4 w-4" /> {selectedPhotoFile ? "Change Photo" : "Upload Photo"}
                 </Button>
-                {photoPreviewUrl && (
-                    <Button type="button" variant="ghost" size="sm" onClick={handleRemovePhoto} className="text-xs">
+                {photoPreviewUrl && ( // Show remove button only if there's a photo to remove
+                    <Button type="button" variant="ghost" size="sm" onClick={handleRemovePhoto} className="text-xs text-destructive hover:text-destructive/80">
                         Remove Photo
                     </Button>
                 )}
@@ -161,11 +166,11 @@ export function EditStudentModal({ isOpen, onClose, student, classItem, allGloba
                 className="hidden"
               />
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Simulated upload. Image is for preview only.</p>
+            <p className="text-xs text-muted-foreground mt-1">Simulated upload. Changes are for preview.</p>
           </div>
           
           <div>
-            <Label>Assign Subjects</Label>
+            <Label>Assign Subjects (from class "{classItem.name}")</Label>
             {subjectsAvailableInClass.length === 0 ? (
               <p className="text-sm text-muted-foreground mt-1">
                 This class has no subjects assigned. Student cannot be enrolled in any subject.
@@ -194,7 +199,10 @@ export function EditStudentModal({ isOpen, onClose, student, classItem, allGloba
             <Button type="button" variant="outline" onClick={onClose} disabled={isLoading}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isLoading || (subjectsAvailableInClass.length > 0 && selectedSubjectIds.length === 0)}>
+            <Button 
+              type="submit" 
+              disabled={isLoading || (subjectsAvailableInClass.length > 0 && selectedSubjectIds.length === 0)}
+            >
               {isLoading ? "Updating..." : "Save Changes"}
             </Button>
           </DialogFooter>
