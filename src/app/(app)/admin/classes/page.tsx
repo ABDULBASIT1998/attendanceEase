@@ -177,18 +177,18 @@ export default function ManageClassesPage() {
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2 shadow-lg">
+        <Card className="lg:col-span-2 shadow-lg flex flex-col">
           <CardHeader>
             <CardTitle className="text-2xl flex items-center">
               <ListChecks className="mr-2 h-6 w-6 text-primary" /> Existing Classes
             </CardTitle>
             <CardDescription>List of currently available classes ({existingClasses.length}).</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-1 min-h-0">
             {existingClasses.length === 0 ? (
               <p className="text-muted-foreground text-center py-4">No classes found. Add one to get started!</p>
             ) : (
-              <ScrollArea className="max-h-[calc(100vh-20rem)] pr-2">
+              <ScrollArea className="h-full pr-2">
                 <div className="space-y-4">
                   {existingClasses.map(cls => (
                     <Card key={cls.id} className="bg-card/50 hover:shadow-md transition-shadow">
