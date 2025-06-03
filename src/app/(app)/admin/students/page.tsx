@@ -397,7 +397,7 @@ export default function ManageStudentsPage() {
 
 
         {/* Column 2: Students in Class List */}
-        <Card className="lg:col-span-2 shadow-lg">
+        <Card className="lg:col-span-2 shadow-lg flex flex-col">
           <CardHeader>
             <CardTitle className="text-2xl flex items-center">
               <ListChecks className="mr-2 h-6 w-6 text-primary" /> Students in Class
@@ -406,13 +406,13 @@ export default function ManageStudentsPage() {
               {selectedClassIdForNewStudent ? `Students in ${allClasses.find(c=>c.id === selectedClassIdForNewStudent)?.name || 'Selected Class'} (${studentsInSelectedClass.length})` : 'Select a class from "Add New Student" to view students.'}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-1 min-h-0">
             {!selectedClassIdForNewStudent ? (
               <p className="text-muted-foreground text-center py-4">Please select a class to see the list of students.</p>
             ) : studentsInSelectedClass.length === 0 ? (
               <p className="text-muted-foreground text-center py-4">No students found in this class.</p>
             ) : (
-              <ScrollArea className="max-h-[calc(100vh-20rem)] pr-2">
+              <ScrollArea className="h-full pr-2">
                 <div className="space-y-4">
                   {studentsInSelectedClass.map(student => (
                     <Card key={student.id} className="bg-card/50 hover:shadow-md transition-shadow">
@@ -423,7 +423,7 @@ export default function ManageStudentsPage() {
                           width={64}
                           height={64}
                           className="rounded-md object-cover border"
-                          data-ai-hint="student avatar indian" // Added specific hint
+                          data-ai-hint="student avatar indian"
                         />
                         <div className="flex-grow">
                           <h3 className="font-semibold text-lg">{student.name}</h3>
@@ -504,3 +504,5 @@ export default function ManageStudentsPage() {
     </div>
   );
 }
+
+    
