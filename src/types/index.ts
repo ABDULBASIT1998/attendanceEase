@@ -29,6 +29,7 @@ export interface AttendanceRecord {
 
 // Structure for data stored in localStorage
 export interface AppData {
+  version: number; // Added for data migration/re-seeding
   classes: ClassItem[];
   subjects: Subject[]; // Global list of all subjects
 }

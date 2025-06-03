@@ -4,6 +4,7 @@ import Papa from 'papaparse';
 
 
 const LOCAL_STORAGE_KEY = 'attendeaseAppData';
+const CURRENT_APP_DATA_VERSION = 2; // Increment this if data structure changes significantly
 
 const defaultSubjects: Subject[] = [
   { id: 'subj-math', name: 'Mathematics' },
@@ -32,18 +33,20 @@ const generateRollNumber = (classItem: ClassItem, existingStudentId?: string): s
   const classPrefix = classItem.name.replace(/\s+/g, '').toUpperCase();
   
   const studentRollNumbers = (classItem.students || [])
-    .filter(s => s.id !== existingStudentId) // Exclude the current student if updating
+    .filter(s => s.id !== existingStudentId) 
     .map(s => s.rollNumber);
 
   let maxNumber = 0;
   studentRollNumbers.forEach(rn => {
     const parts = rn.split('-');
-    const numStr = parts[parts.length -1];
-    if (numStr && !isNaN(parseInt(numStr))) {
-      const num = parseInt(numStr);
-      if (num > maxNumber) {
-        maxNumber = num;
-      }
+    if (parts.length > 1) {
+        const numStr = parts[parts.length - 1];
+        if (numStr && !isNaN(parseInt(numStr))) {
+          const num = parseInt(numStr);
+          if (num > maxNumber) {
+            maxNumber = num;
+          }
+        }
     }
   });
   
@@ -54,33 +57,40 @@ const generateRollNumber = (classItem: ClassItem, existingStudentId?: string): s
 
 const generateDefaultStudents = (classItem: ClassItem, count: number): Student[] => {
   const students: Student[] = [];
+  // Create a temporary class item that will accumulate students for roll number generation.
+  // This ensures roll numbers are unique within this batch generation.
   const tempClassItemForRollNumber = { ...classItem, students: [] as Student[] };
   const usedNames = new Set<string>();
 
   for (let i = 0; i < count; i++) {
     let studentName = indianNames[Math.floor(Math.random() * indianNames.length)];
     let attempt = 0;
-    while(usedNames.has(studentName) && attempt < indianNames.length) { // Avoid duplicate names within the same class generation
+    // Try to get a unique name from the list for this batch of students
+    while(usedNames.has(studentName) && attempt < indianNames.length) {
         studentName = indianNames[Math.floor(Math.random() * indianNames.length)];
         attempt++;
     }
     usedNames.add(studentName);
 
-    const studentId = `${classItem.id}-student-${studentName.toLowerCase().replace(/\s+/g, '-')}-${i + 1}`;
+    const studentId = `${classItem.id}-student-${studentName.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${i}`; // Ensure unique ID
+    
+    // Assign a random subset of the class's subjects to the student
     const numSubjectsToAssign = Math.max(1, Math.floor(Math.random() * classItem.subjectIds.length) + 1);
     const studentSubjectIds = [...classItem.subjectIds].sort(() => 0.5 - Math.random()).slice(0, numSubjectsToAssign);
         
+    // Generate roll number using the temporary class item
     const rollNumber = generateRollNumber(tempClassItemForRollNumber); 
     
     const newStudent: Student = {
       id: studentId,
       name: studentName,
       rollNumber: rollNumber,
-      photoUrl: `https://placehold.co/100x100.png`, // data-ai-hint will be added in component
+      photoUrl: `https://placehold.co/100x100.png`, 
       classId: classItem.id,
       subjectIds: studentSubjectIds,
     };
     students.push(newStudent);
+    // Add the newly created student to the temporary class item for the next roll number generation
     tempClassItemForRollNumber.students.push(newStudent); 
   }
   return students;
@@ -125,6 +135,7 @@ const getDefaultAppData = (): AppData => {
   });
 
   return {
+    version: CURRENT_APP_DATA_VERSION,
     subjects: [...defaultSubjects],
     classes: classes,
   };
@@ -137,50 +148,45 @@ const loadAppData = (): AppData => {
     if (storedData) {
       try {
         const parsedData = JSON.parse(storedData) as AppData;
-        // Ensure students array exists and initialize if not
-        parsedData.classes = parsedData.classes.map(cls => ({
-          ...cls,
-          students: cls.students || [] 
-        }));
-
-        // Ensure roll numbers and subjects are correctly initialized for older data structures
-        parsedData.classes.forEach(cls => {
-          const tempClassForRollGen = { ...cls, students: [] as Student[] }; // Temporary class for accurate roll gen
-          cls.students.forEach(s => {
-            if (!s.subjectIds || s.subjectIds.length === 0) {
-               // Assign all class subjects if student has none, or a random subset
-              const numSubjectsToAssign = Math.max(1, Math.floor(Math.random() * cls.subjectIds.length) + 1);
-              s.subjectIds = [...cls.subjectIds].sort(() => 0.5 - Math.random()).slice(0, numSubjectsToAssign);
-            }
-            // Regenerate roll number if it seems invalid or missing based on current class name
-            if (!s.rollNumber || !s.rollNumber.startsWith(cls.name.replace(/\s+/g, '').toUpperCase() + "-")) { 
-              s.rollNumber = generateRollNumber(tempClassForRollGen, s.id); // Pass existing ID to avoid self-conflict
-            }
-            tempClassForRollGen.students.push(s); // Add to temp class for next student's roll gen
-          });
-        });
-        return parsedData;
+        // Check version for data migration/re-seeding
+        if (parsedData.version && parsedData.version >= CURRENT_APP_DATA_VERSION) {
+            // Ensure students array exists and initialize if not (for older structures that might have been partially migrated)
+            parsedData.classes = parsedData.classes.map(cls => ({
+              ...cls,
+              students: cls.students || [] 
+            }));
+            // Further integrity checks can be added here if needed for specific fields
+            return parsedData;
+        } else {
+            // Data is old or unversioned, re-seed with new defaults
+            console.log("Old or unversioned app data found. Re-seeding with new defaults.");
+            const defaultData = getDefaultAppData();
+            saveAppData(defaultData); // Save the fresh data immediately
+            return defaultData;
+        }
       } catch (error) {
-        console.error("Error parsing AppData from localStorage", error);
+        console.error("Error parsing AppData from localStorage, re-seeding.", error);
         // Fallback to default if parsing fails
       }
     }
   }
-  return getDefaultAppData();
+  // If no stored data or if running in a non-browser environment (or error occurred above)
+  const defaultData = getDefaultAppData();
+  // Only save if in browser and there was no data initially
+  if (typeof window !== 'undefined' && !localStorage.getItem(LOCAL_STORAGE_KEY)) {
+    saveAppData(defaultData);
+  }
+  return defaultData;
 };
 
 const saveAppData = (data: AppData) => {
   if (typeof window !== 'undefined') {
+    data.version = CURRENT_APP_DATA_VERSION; // Ensure current version is saved
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
   }
 };
 
 let appData: AppData = loadAppData();
-
-// Ensure data is saved if it was just loaded as default
-if (typeof window !== 'undefined' && !localStorage.getItem(LOCAL_STORAGE_KEY)) {
-  saveAppData(appData);
-}
 
 
 // --- Subject Management ---
@@ -274,7 +280,7 @@ export const addClass = (name: string, subjectIds: string[]): ClassItem => {
     id: `class-${trimmedName.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
     name: trimmedName,
     subjectIds,
-    students: [], // Initialize with an empty student array
+    students: [], 
   };
   appData.classes.push(newClass);
   saveAppData(appData);
@@ -288,27 +294,32 @@ export const updateClass = (classId: string, newName: string, newSubjectIds: str
     if (classIndex === -1) {
         throw new Error("Class not found.");
     }
-    // Check if another class with the new name already exists
     const existingClassWithSameName = appData.classes.find(c => c.name.toLowerCase() === trimmedNewName.toLowerCase() && c.id !== classId);
     if (existingClassWithSameName) {
         throw new Error(`Class name "${trimmedNewName}" already exists.`);
     }
 
-    const oldClass = { ...appData.classes[classIndex] }; // For comparison
+    const oldClass = { ...appData.classes[classIndex] }; 
     const classToUpdate = appData.classes[classIndex];
     
+    const nameChanged = oldClass.name !== trimmedNewName;
     classToUpdate.name = trimmedNewName;
     classToUpdate.subjectIds = newSubjectIds;
 
-    // If class name changed, update roll numbers for all students in this class
-    if (oldClass.name !== trimmedNewName) {
-        const tempClassForRollGen = { ...classToUpdate, students: [] as Student[] }; // Fresh list for re-generation
-        classToUpdate.students.forEach(student => {
-            student.rollNumber = generateRollNumber(tempClassForRollGen, student.id);
-            tempClassForRollGen.students.push(student); // Add to temp as we go
+    if (nameChanged) {
+        // Re-generate roll numbers for all students in this class using a temporary copy to avoid conflicts
+        const studentsCopy = [...classToUpdate.students];
+        const tempClassForRollGen = { ...classToUpdate, students: [] as Student[] };
+        classToUpdate.students = []; // Clear original students before re-adding with new roll numbers
+
+        studentsCopy.forEach(student => {
+            const newRollNumber = generateRollNumber(tempClassForRollGen, student.id);
+            const updatedStudent = {...student, rollNumber: newRollNumber};
+            classToUpdate.students.push(updatedStudent);
+            tempClassForRollGen.students.push(updatedStudent);
         });
     }
-    // Ensure students' subject enrollments are still valid for the class
+    
     classToUpdate.students.forEach(student => {
         student.subjectIds = student.subjectIds.filter(subId => newSubjectIds.includes(subId));
     });
@@ -322,7 +333,6 @@ export const deleteClass = (classId: string): void => {
     if (classIndex === -1) {
         throw new Error("Class not found for deletion.");
     }
-    // Students are part of the class object, so they are deleted too
     appData.classes.splice(classIndex, 1);
     saveAppData(appData);
 };
@@ -337,7 +347,6 @@ export const getStudentsByClass = (classId: string): Student[] => {
 export const getStudentsForSubjectInClass = (classId: string, subjectId: string): Student[] => {
   const classItem = getClassById(classId);
   if (!classItem || !classItem.students) return [];
-  // Filter students who are enrolled in the specific subject
   return classItem.students.filter(student => student.subjectIds && student.subjectIds.includes(subjectId));
 };
 
@@ -352,7 +361,6 @@ export const addStudent = (
   const trimmedName = studentData.name.trim();
   if(!trimmedName) throw new Error("Student name cannot be empty.");
 
-  // Ensure student subjects are a subset of class subjects
   const classSubjects = classItem.subjectIds;
   const validStudentSubjects = studentData.studentSubjectIds.filter(id => classSubjects.includes(id));
   
@@ -363,7 +371,7 @@ export const addStudent = (
     rollNumber: rollNumber,
     id: `student-${trimmedName.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
     classId,
-    photoUrl: studentData.photoUrl || `https://placehold.co/100x100.png`, // data-ai-hint will be added in component
+    photoUrl: studentData.photoUrl || `https://placehold.co/100x100.png?text=${trimmedName.charAt(0)}`, 
     subjectIds: validStudentSubjects,
   };
   if (!classItem.students) {
@@ -376,7 +384,7 @@ export const addStudent = (
 
 export const updateStudent = (
     studentId: string,
-    classId: string, // Class ID is important for finding the student
+    classId: string, 
     updateData: Partial<Omit<Student, 'id' | 'classId' | 'rollNumber'>> & { studentSubjectIds?: string[] }
 ): Student | null => {
     const classItem = appData.classes.find(c => c.id === classId);
@@ -391,20 +399,15 @@ export const updateStudent = (
 
     const studentToUpdate = classItem.students[studentIndex];
 
-    // Update name if provided
     if (updateData.name) {
         const trimmedName = updateData.name.trim();
         if(!trimmedName) throw new Error("Student name cannot be empty.");
         studentToUpdate.name = trimmedName;
-        // Note: Roll number does not change if name changes, it's fixed upon creation unless class name changes.
     }
-    // Update photoUrl if provided (can be null to remove photo)
     if (updateData.photoUrl !== undefined) { 
         studentToUpdate.photoUrl = updateData.photoUrl;
     }
-    // Update subject enrollments if provided
     if (updateData.studentSubjectIds) {
-        // Ensure student subjects are a subset of class subjects
         const validStudentSubjects = updateData.studentSubjectIds.filter(id => classItem.subjectIds.includes(id));
         studentToUpdate.subjectIds = validStudentSubjects;
     }
@@ -427,7 +430,6 @@ export const deleteStudent = (classId: string, studentId: string): void => {
     saveAppData(appData);
 };
 
-// For Bulk Upload
 export type BulkUploadResult = {
     successCount: number;
     errorCount: number;
@@ -444,18 +446,16 @@ export const addMultipleStudents = (csvText: string): BulkUploadResult => {
 
     if (parsed.errors.length > 0) {
         parsed.errors.forEach(err => result.errors.push(`CSV Parsing Error (Row ${err.row}): ${err.message}`));
-        result.errorCount += parsed.errors.length; // Increment error count for each parsing error
-        // No need to return early, let it try to process what it can, or handle as fatal
-        // For now, we'll make parsing errors fatal for the whole batch for simplicity
+        result.errorCount += parsed.errors.length; 
         if (result.errors.length > 0) return result;
     }
     
     const requiredHeaders = ["Student Name", "Class Name", "Subjects"];
-    const actualHeaders = parsed.meta.fields || []; // Get actual headers from parsed data
+    const actualHeaders = parsed.meta.fields || []; 
     for (const header of requiredHeaders) {
         if (!actualHeaders.includes(header)) {
             result.errors.push(`CSV Error: Missing required header column: "${header}". Ensure your CSV has headers: ${requiredHeaders.join(', ')}.`);
-            result.errorCount = parsed.data.length; // Mark all as error if headers missing
+            result.errorCount = parsed.data.length; 
             return result;
         }
     }
@@ -469,50 +469,49 @@ export const addMultipleStudents = (csvText: string): BulkUploadResult => {
         if (!studentName) {
             result.errors.push(`Row ${index + 2}: Student Name is missing.`);
             result.errorCount++;
-            return; // Skip this row
+            return; 
         }
         if (!className) {
             result.errors.push(`Row ${index + 2} (Student: ${studentName}): Class Name is missing.`);
             result.errorCount++;
-            return; // Skip this row
+            return; 
         }
         
         const classItem = getClassByName(className);
         if (!classItem) {
             result.errors.push(`Row ${index + 2} (Student: ${studentName}): Class "${className}" not found.`);
             result.errorCount++;
-            return; // Skip this row
+            return; 
         }
 
         let studentSubjectIds: string[] = [];
         if (subjectsStr) {
-            const subjectNames = subjectsStr.split(',').map(s => s.trim()).filter(s => s); // Filter out empty strings after split
+            const subjectNames = subjectsStr.split(',').map(s => s.trim()).filter(s => s); 
+            let subjectErrorOccurred = false;
             for (const subName of subjectNames) {
                 const subject = getSubjectByName(subName);
                 if (!subject) {
-                    result.errors.push(`Row ${index + 2} (Student: ${studentName}): Subject "${subName}" not found.`);
-                    result.errorCount++;
-                    return; // Stop processing this student if a subject is invalid
+                    result.errors.push(`Row ${index + 2} (Student: ${studentName}): Subject "${subName}" not found globally.`);
+                    subjectErrorOccurred = true;
+                    break; 
                 }
-                // Check if the subject is actually part of the class the student is being added to
                 if (!classItem.subjectIds.includes(subject.id)) {
                      result.errors.push(`Row ${index + 2} (Student: ${studentName}): Subject "${subName}" is not assigned to class "${className}".`);
-                    result.errorCount++;
-                    return; // Stop processing this student
+                    subjectErrorOccurred = true;
+                    break;
                 }
                 studentSubjectIds.push(subject.id);
             }
-        } else {
-            // If no subjects string is provided, student is enrolled in no specific subjects.
-            // This is valid if the student is just in the class but not taking any specific subjects from the class list.
+            if (subjectErrorOccurred) {
+                result.errorCount++;
+                return; // Skip this student due to subject error
+            }
         }
-
 
         try {
             addStudent(classItem.id, {
                 name: studentName,
                 studentSubjectIds: studentSubjectIds,
-                // photoUrl can be omitted for default placeholder
             });
             result.successCount++;
         } catch (e: any) {
@@ -521,7 +520,7 @@ export const addMultipleStudents = (csvText: string): BulkUploadResult => {
         }
     });
 
-    saveAppData(appData); // Save once after all processing
+    saveAppData(appData); 
     return result;
 };
 
@@ -530,7 +529,6 @@ export const addMultipleStudents = (csvText: string): BulkUploadResult => {
 export const getSubjectsForClass = (classId: string): Subject[] => {
   const classItem = getClassById(classId);
   if (!classItem) return [];
-  // Filter global subjects based on IDs stored in classItem
   return appData.subjects.filter(subject => classItem.subjectIds.includes(subject.id));
 };
 
@@ -538,14 +536,10 @@ export const getSubjectsForClass = (classId: string): Subject[] => {
 export const resetAndSeedData = () => {
   appData = getDefaultAppData();
   saveAppData(appData);
+  // Optionally, reload the page to reflect changes if called from UI
+  // if (typeof window !== 'undefined') { window.location.reload(); }
 };
-// Expose for debugging if needed (e.g., from browser console)
 // if (typeof window !== 'undefined') { (window as any).resetAndSeedData = resetAndSeedData; }
 
-// Ensure data is initialized and saved if not present
-if (typeof window !== 'undefined' && !localStorage.getItem(LOCAL_STORAGE_KEY)) {
-  appData = getDefaultAppData(); // Load defaults
-  saveAppData(appData);        // Save them
-} else {
-  appData = loadAppData(); // Load existing
-}
+// Initial load of appData
+appData = loadAppData();
